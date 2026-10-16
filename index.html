@@ -92,6 +92,10 @@ button.go{border-color:rgba(255,210,122,.6);}
 <div class="hint" id="hint">隕石をタップしてくだき、月へ進もう</div>
 <div class="banner" id="banner"><span id="bt">月に到着</span><small id="bs">タップで一歩</small></div>
 
+<div class="bottombar" id="scopebar" hidden>
+  <button id="scopeexit" type="button" class="go">望遠鏡からはなれる</button>
+</div>
+
 <div class="bottombar" id="shipbar" hidden>
   <button id="shipexit" type="button" class="go">船を出る</button>
 </div>
@@ -370,6 +374,8 @@ function drawAstronaut(x,y,air,t){
 /* ---------- HUD ---------- */
 function fmtKm(n){n=Math.max(0,Math.round(n));if(n>=1e8)return (n/1e8).toFixed(2)+'億 km';if(n>=1e4&&n>=1e6)return Math.round(n/1e4).toLocaleString()+'万 km';return n.toLocaleString()+' km';}
 function updateHud(){
+  if(ev&&ev.type==='scope'){scopeHud();return;}
+  if(ev&&ev.type==='bh'){bhHud();return;}
   if(phase==='party'){$('lab').textContent='メアリー・セレスト号';$('big').textContent='おちゃかい';$('sub').textContent=`お客さん ${partyCount()}人`;return;}
   if(phase==='ship'){$('lab').textContent='メアリー・セレスト号';$('big').textContent='船の中';$('sub').textContent=`調べたもの ${Object.keys(shipLooked).length} / ${roomObjs().length}`;return;}
   if(ev&&ev.type==='hell'){const h=HELLS[ev.id];$('lab').textContent=h.name;
@@ -386,18 +392,19 @@ cv.addEventListener('pointerdown',e=>{
   if(!$('diary').hidden)return;
   const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
   if(phase==='fly'){
+    if(flyPetTap(px,py))return;
     if(shipTap(px,py))return;
     if(ev&&ev.type==='radio'&&radioTap(px,py))return;
     for(let i=meteors.length-1;i>=0;i--){const m=meteors[i];if(Math.hypot(m.x-px,m.y-py)<m.r+16){meteors.splice(i,1);breakMeteor(m);return;}}
-  }else if(phase==='home'){if(shipTap(px,py))return;if(ev&&ev.type==='radio')radioTap(px,py);}
+  }else if(phase==='home'){if(ev&&ev.type==='bh'){bhTap(px,py);return;}if(flyPetTap(px,py))return;if(shipTap(px,py))return;if(ev&&ev.type==='radio')radioTap(px,py);}
   else if(phase==='ship'){shipRoomTap(px,py);}
   else if(phase==='party'){partyTap(px,py);}
-  else if(phase==='walk'){if(ev&&ev.type==='hell'&&hellTap(px,py))return;if(traceTap(px,py))return;if(sandTap(px,py))return;if(petTap(px,py))return;if(commTap(px,py))return;hop();}
+  else if(phase==='walk'){if(ev&&ev.type==='scope'){scopeTap(px,py);return;}if(ev&&ev.type==='hell'&&hellTap(px,py))return;if(traceTap(px,py))return;if(sandTap(px,py))return;if(standTap(px,py))return;if(petTap(px,py))return;if(commTap(px,py))return;hop();}
 });
 $('grav').onclick=e=>{e.stopPropagation();gMode=gMode==='star'?'earth':'star';setGravLabel();};
 $('next').onclick=e=>{e.stopPropagation();if(player.air||ev)return;
   if(L<LEGS.length-1)startLeg(L+1);else startHome();};
-$('restart').onclick=e=>{e.stopPropagation();log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces={};pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);};
+$('restart').onclick=e=>{e.stopPropagation();log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces={};scopeLog={};bhDone=false;bhLog=null;pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);};
 
 /* ---------- 帰り道 ---------- */
 let homeT=0;
@@ -408,6 +415,8 @@ function showCard(){phase='end';trips++;try{localStorage.setItem('hoshikuzu-trip
     dt.textContent=STAGES[id].name;dd.textContent=`${p.steps}歩・${(p.x/PXM).toFixed(1)} m・いちばん高く ${(p.maxH/PXM).toFixed(2)} m`;rec.append(dt,dd);});
   const row=(a,b)=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=a;dd.textContent=b;rec.append(dt,dd);};
   row('くだいた',`隕石と氷 ${totalBroken}こ`);
+  {const sc=['moon','europa','jupiter'].filter(k=>scopeLog[k]).map(k=>SCOPES[k].short);if(sc.length)row('望遠鏡',sc.join('・'));}
+  if(bhLog)row('ブラックホール',`あなた ${fmtClock(bhLog.self)}／地球 ${fmtClock(bhLog.far)}`);
   ['moon','europa','jupiter'].forEach(id=>{const r=hellLog[id];if(r)row(HELLS[id].name,`${HELLS[id].unit} ${r.score}こ`);});
   if(diaryRead){row('メアリー・セレスト号','日記を読んだ');row('置き手紙',`${Object.keys(traces).length} / 3 まい`);}
   if(petJoined)row('相棒','モフ');
@@ -454,7 +463,8 @@ function frameFly(dt,landing){
   updateHud();}
 
 function frameHome(dt){
-  if(!ev&&!ship)homeT+=dt;
+  if(!ev&&!ship&&!book&&bhHold<=0)homeT+=dt;
+  if(!bhDone&&homeT>.6&&!ev&&!ship&&phase==='home')startBH();
   if(!diaryRead&&shipN>=2&&!shipHomeTried&&homeT>.7){shipHomeTried=true;showShip(3);}
   if(homeT>=1.6&&!ship&&!radioStarted.home){radioStarted.home=true;startRadio('home');}
   const p=ease(Math.min(1,homeT/4)),base=Math.min(W,H);
@@ -462,7 +472,7 @@ function frameHome(dt){
   const jr=lerp(base*.5,base*.04,p);drawJupiter(W*.25,H+jr*.3-p*H*.1,jr);
   drawEarth(W*.6,lerp(H*.2,H*.42,p),lerp(base*.02,base*.32,p));
   if(ship){updateShip(dt);if(ship)drawShip(ship.x,ship.y,ship.s,ship.stage,shipAlpha());}
-  radioFrame(dt);drawFlyPet();drawFloats(dt);
+  radioFrame(dt);bhFrame(dt);drawFlyPet();drawFloats(dt);
   if(allLetters()&&!partyDone&&!ship&&!ev&&radioStarted.home&&homeT>=2.4&&phase==='home')showShip(4);
   if(phase==='home'&&homeT>4.3&&!ev&&!ship&&(partyDone||!allLetters()))showCard();}
 
@@ -537,7 +547,7 @@ function frameWalk(dt){
   cx.save();cx.translate(rnd(-1,1)*shake,camY+rnd(-1,1)*shake);
   if(cur==='moon')groundMoon(gy);else if(cur==='europa')groundEuropa(gy);else groundJupiter(gy);
   if(presence&&cur!=='jupiter')drawPresence(gy);
-  drawTrace(gy);
+  drawTrace(gy);drawStand(gy);
   for(const f of foot){const x=f.x-camX;if(x<-20||x>W+20)continue;const yy=gy+(f.s>0?6:10);
     if(cur==='moon'){cx.fillStyle='rgba(55,53,50,.7)';cx.beginPath();cx.ellipse(x,yy,6,2.4,0,0,7);cx.fill();
       cx.strokeStyle='rgba(40,38,36,.5)';cx.lineWidth=.8;for(let k=-3;k<=3;k+=2){cx.beginPath();cx.moveTo(x+k,yy-1.5);cx.lineTo(x+k,yy+1.5);cx.stroke();}}
@@ -562,6 +572,7 @@ function frameWalk(dt){
   cx.restore();
   if(he&&ev===he)drawHellFront(he);
   updateComm(dt);drawComm();
+  if(ev&&ev.type==='scope')scopeFrame(dt);
   if(player.air||he)updateHud();}
 
 /* ---------- イベント：未知の電波 ---------- */
@@ -1014,10 +1025,16 @@ function drawWalkPet(){const p=pet,x=p.x-camX;if(x<-40||x>W+40)return;const sy=s
 function petTap(px,py){if(!pet)return false;const s=petScale(),x=pet.x-camX,y=surfY(pet.x)+6-pet.h-14*s;
   if(Math.hypot(px-x,py-camY-y)<30*s){pet.air=true;pet.vy=V0*.9;sSqueak();
     floats.push({x:pet.x,y:y-30,txt:Math.random()<.5?'キュッ！':'キュルン',life:.9,small:true});return true;}return false;}
-function drawFlyPet(){if(!petJoined||phase==='end')return;const x=Math.max(44,W*.1),y=H*.76+Math.sin(T*1.6)*5;
+let flyWiggle=0;
+function flyPetPos(){return {x:Math.max(44,W*.1),y:H*.76+Math.sin(T*1.6)*5};}
+function flyPetTap(px,py){if(!petJoined||phase==='end')return false;const p=flyPetPos();
+  if(Math.hypot(px-p.x,py-(p.y-14))>34)return false;
+  flyWiggle=1;sSqueak();floats.push({x:p.x+18,y:p.y-48,txt:Math.random()<.5?'キュルン♪':'キュルンキュルン！',life:1.1,small:true});return true;}
+function drawFlyPet(){if(!petJoined||phase==='end')return;flyWiggle=Math.max(0,flyWiggle-1/60*1.1);
+  const w=flyWiggle,x=flyPetPos().x+Math.sin(T*42)*3.5*w,y=flyPetPos().y-Math.abs(Math.sin(T*9))*7*w;
   cx.save();cx.fillStyle='rgba(160,190,255,.12)';cx.strokeStyle='rgba(200,220,255,.45)';cx.lineWidth=1.5;cx.beginPath();cx.arc(x,y-14,27,0,7);cx.fill();cx.stroke();
   cx.fillStyle='rgba(255,255,255,.45)';cx.beginPath();cx.ellipse(x-11,y-29,6,3,-.6,0,7);cx.fill();cx.restore();
-  drawPet(x,y,1,{blink:(T%3.4)<.12,happy:!!ev});}
+  drawPet(x,y,1+Math.sin(T*30)*.06*w,{blink:w<=0&&(T%3.4)<.12,happy:!!ev||w>0});}
 function basketPos(u,tx,ty,fy){const ry=fy+(H-fy)*.35;return {x:tx+108*u,y:ry+6*u};}
 function drawBasket(u,tx,ty,fy){const {x,y}=basketPos(u,tx,ty,fy);
   cx.fillStyle='#6e4a28';cx.beginPath();cx.ellipse(x,y-8*u,26*u,8*u,0,0,7);cx.fill();
@@ -1069,6 +1086,7 @@ const PARTY_PAGES=()=>{const p=[
   ['','ずっとむかし、青い星から小さな声がとどいた。「だれか、いますか」って。'],
   ['','その声は、光の速さでも、わたしの星まで何十年もかかってとどいたの。だから返事も、うんと時間がかかる。それでも、ずっと送りつづけていたんだ。']];
   if(petJoined)p.push(['','モフも、ちゃんとあなたを連れてきてくれたのね。ありがとう、モフ。']);
+  if(bhDone)p.push(['','黒い星のそばを通ったあなたなら、わかるよね。あそこでは、時間がゆっくり流れるの。わたしの「100年」も、あの星のせい。']);
   p.push(['','月の砂の下の子も、氷の下のさかなも、光るくらげも。みんな、来てくれた。'],
     ['','いちばんいい席は、ずっと、あなたの席でした。'],
     ['さいごのページ','お茶をどうぞ。今度は、みんなで。']);return p;};
@@ -1125,9 +1143,16 @@ function partyTap(px,py){const G=guestPos(),R2={writer:['ふふっ','おかわ�
 /* ---------- 地球との通信（光の速さの遅れ） ---------- */
 const LIGHT_KM=299792;           // 光と電波が1秒に進むきょり（km）
 const COMM={                      // 地球までのきょり（エウロパ・木星は、いちばん近いころの目安）
-  moon:{km:384400,speed:1,send:'もしもし、地球？',reply:'キコエルヨ！'},
-  europa:{km:628e6,speed:300,send:'コチラ エウロパ',reply:'コチラ チキュウ。キコエタヨ'},
-  jupiter:{km:628e6,speed:300,send:'コチラ モクセイ',reply:'コチラ チキュウ。オカエリ'}};
+  moon:{km:384400,speed:1,
+    send:['もしもし、地球？','ヤッホー！','月の砂、ジャリジャリだよ','地球が青くてきれいだよ'],
+    reply:['キコエルヨ！','ヤッホー！ ヨク キコエル','ゲンキ？ オミヤゲ マッテル','ツキ ハ キレイ？','ウサギ ハ イタ？']},
+  europa:{km:628e6,speed:300,
+    send:['コチラ エウロパ','氷の星に着いたよ','氷の下から、音がする…'],
+    reply:['コチラ チキュウ。キコエタヨ','サムクナイ？ アタタカクシテネ','コオリノ シタニ ナニカ イル？','キヲツケテネ','スゴイ！ シャシン オクッテ']},
+  jupiter:{km:628e6,speed:300,
+    pairs:[['コチラ モクセイ。もうすぐ帰るよ','オカエリ！ マッテルヨ'],['そろそろ地球へ帰るね','オカエリナサイ！ キヲツケテ'],['これから帰ります','オカエリ！ オチャ ヨウイ シテオクネ']]}};
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+function pickMsg(id){const c=COMM[id];if(c.pairs){const q=pick(c.pairs);return {send:q[0],reply:q[1]};}return {send:pick(c.send),reply:pick(c.reply)};}
 let comm=null,commUsed={};
 function fmtDelay(sec){if(sec<60)return `約${sec.toFixed(1)}秒`;const m=Math.floor(sec/60),r=Math.round(sec%60);return r?`約${m}分${r}秒`:`約${m}分`;}
 function earthPos(){if(cur==='moon')return {x:W*.8,y:H*.17,r:Math.min(W,H)*.065};
@@ -1138,8 +1163,8 @@ function drawTinyEarth(){const e=earthPos();cx.save();cx.fillStyle='#7fc3ff';cx.
 function astroSky(){const s=Math.min(1.3,Math.max(.8,H/700));return {x:W*.32+8*s,y:surfY(player.x)+6-player.h-90*s+camY};}
 function commTap(px,py){if(comm||ev)return false;const e=earthPos();
   if(Math.hypot(px-e.x,py-e.y)>Math.max(34,e.r+14))return false;
-  const c=COMM[cur];comm={id:cur,stage:'up',p:0,t:0,c};commUsed[cur]=true;
-  floats.push({x:camX+W*.32,y:groundY()-150,txt:c.send,life:1.4,small:true});
+  const c=COMM[cur],mm=pickMsg(cur);comm={id:cur,stage:'up',p:0,t:0,c,reply:mm.reply};commUsed[cur]=true;
+  floats.push({x:camX+W*.32,y:groundY()-150,txt:mm.send,life:1.4,small:true});
   $('hint').textContent=c.speed>1?`地球へ送信！ 光の速さでも片道${fmtDelay(c.km/LIGHT_KM)}。（${c.speed}倍の早送りで見てみよう）`:'地球へ送信！ 電波が光の速さで飛んでいく…';
   if(sound)sBeep(900);return true;}
 function updateComm(dt){const m=comm;if(!m)return;m.t+=dt;const one=m.c.km/LIGHT_KM;
@@ -1148,7 +1173,7 @@ function updateComm(dt){const m=comm;if(!m)return;m.t+=dt;const one=m.c.km/LIGHT
       if(m.stage==='up'){m.stage='wait';m.t=0;if(sound)sPing();
         $('hint').textContent=m.c.speed>1?`地球にとどいた！ 返事がもどってくるのにも、また${fmtDelay(one)}かかる…`:'地球にとどいた！ 返事を待とう…';}
       else{m.stage='done';m.t=0;if(sound){sPowan();sPing();}
-        floats.push({x:camX+W*.32,y:groundY()-160,txt:m.c.reply,life:1.8});
+        floats.push({x:camX+W*.32,y:groundY()-160,txt:m.reply,life:1.8});
         $('hint').textContent=m.id==='moon'
           ?'月と地球は、電波で片道約1.3秒。だからおしゃべりすると、返事まで約2.6秒かかるんだ'
           :`ここから地球までは、光の速さでも片道${fmtDelay(one)}。返事が来るまで、ほんとうは1時間以上かかるんだ`;}}}
@@ -1178,6 +1203,183 @@ function drawComm(){const m=comm;if(!m)return;const e=earthPos(),a=astroSky(),on
   cx.font=`500 11px ${FONT}`;cx.textAlign='left';cx.fillStyle='#d9e2ff';
   cx.fillText(`往復 ${fmtDelay(total)} のうち ${fmtDelay(Math.min(done,total)).replace('約','')}`,x0+12,y0+50);
   cx.restore();}
+
+/* ---------- 望遠鏡イベント ---------- */
+let scopeLog={},bhDone=false,bhLog=null,bhHold=0;
+const SCOPES={
+  moon:{title:'オリオン大星雲',sub:'星のゆりかご（地球から約1300光年）',short:'星の誕生',
+    start:'月には空気がないので、星がまたたかずにくっきり見える。ガスとちりにふれて、まん中に集めよう'},
+  europa:{title:'白色矮星「ルーシー」',sub:'ケンタウルス座（地球から約50光年）',short:'ダイヤモンドの星',
+    start:'燃えつきた星の芯。地球くらいの大きさなのに、重さは太陽くらい。スプーン1杯で約5トン！ 星にふれて近づこう'},
+  jupiter:{title:'シューメーカー・レヴィ第9彗星',sub:'1994年7月の木星',short:'彗星の衝突',
+    start:'彗星は木星の強い重力でバラバラになり、21個のかけらが次々にぶつかった。かけらにふれて見届けよう'}};
+const STAND_X={moon:230,europa:230,jupiter:170};
+function standPos(){const wx=STAND_X[cur];return {wx,x:wx-camX,y:surfY(wx)+4};}
+function drawStand(gy){if(ev&&ev.type==='scope')return;const p=standPos();if(p.x<-60||p.x>W+60)return;const {x,y}=p;
+  cx.save();cx.strokeStyle='#c9ccd6';cx.lineWidth=2.5;cx.lineCap='round';
+  cx.beginPath();cx.moveTo(x,y-34);cx.lineTo(x-14,y);cx.moveTo(x,y-34);cx.lineTo(x+14,y);cx.moveTo(x,y-34);cx.lineTo(x+2,y+2);cx.stroke();
+  cx.translate(x,y-38);cx.rotate(-.6);
+  cx.fillStyle='#eef0f6';cx.beginPath();cx.roundRect(-16,-6,40,12,4);cx.fill();
+  cx.fillStyle='#d0584a';cx.fillRect(10,-6,4,12);cx.fillStyle='#2c3e6e';cx.beginPath();cx.ellipse(24,0,3,6.5,0,0,7);cx.fill();
+  cx.fillStyle='#9aa0b4';cx.fillRect(-20,-3,5,6);cx.restore();
+  if(!scopeLog[cur]){cx.strokeStyle=`rgba(255,220,150,${.3+.3*Math.sin(T*3)})`;cx.lineWidth=1.5;cx.beginPath();cx.arc(x+4,y-30,30+3*Math.sin(T*3),0,7);cx.stroke();}
+  cx.font=`700 11px ${FONT}`;cx.textAlign='center';cx.fillStyle='rgba(255,240,210,.85)';cx.fillText('望遠鏡',x+4,y-70);}
+function standTap(px,py){if(ev)return false;const p=standPos(),yt=py-camY;
+  if(Math.abs(px-p.x-4)<42&&yt>p.y-82&&yt<p.y+12){startScope(cur);return true;}return false;}
+function scopeR(){return Math.min(W*.46,H*.33);}
+function scopeC(){return {x:W/2,y:H*.44};}
+function startScope(id){
+  ev={type:'scope',id,t:0,stage:'look',score:0,items:[],fx:[],zoom:1,zv:1,spots:[],booms:[],spawn:0};
+  if(id==='moon')for(let i=0;i<14;i++)ev.items.push({a:rnd(0,6.283),d:rnd(.45,.88),r:rnd(.07,.11),hue:pick([330,200,280,20]),pull:0,ph:rnd(0,6)});
+  if(id==='jupiter')for(let i=0;i<8;i++)ev.items.push({k:i,p:-i*.22,hit:false,fast:false});
+  $('walkbar').hidden=true;$('scopebar').hidden=false;$('scopeexit').textContent='望遠鏡からはなれる';
+  $('hint').textContent=SCOPES[id].start;$('hint').style.opacity=1;if(sound)sPowan();updateHud();}
+function endScope(){ev=null;$('scopebar').hidden=true;$('walkbar').hidden=false;$('hint').textContent=STAGES[cur].fact;updateHud();}
+$('scopeexit').onclick=e=>{e.stopPropagation();if(ev&&ev.type==='scope')endScope();};
+function scopeHud(){const e=ev;$('lab').textContent='望遠鏡';$('big').textContent=SCOPES[e.id].short;
+  $('sub').textContent=e.id==='moon'?`集めたガス ${Math.min(12,e.score)} / 12`
+    :e.id==='europa'?(e.stage==='look'?`近づく ${e.zoom} / 6`:`ダイヤのかけら ${e.score} / 8`):`見届けたかけら ${e.score} / 8`;}
+function scopeDone(title,hint){const e=ev;e.stage='done';e.t=0;scopeLog[e.id]=true;
+  showBanner(title,'「もどる」で旅をつづけよう',false,3200);sChime();$('hint').textContent=hint;$('scopeexit').textContent='もどる';updateHud();}
+function scopeFrame(dt){const e=ev;e.t+=dt;const c=scopeC(),R=scopeR();
+  cx.fillStyle='rgba(2,3,8,.95)';cx.fillRect(0,0,W,H);
+  cx.save();cx.beginPath();cx.arc(c.x,c.y,R,0,7);cx.clip();cx.fillStyle='#03040b';cx.fillRect(c.x-R,c.y-R,R*2,R*2);
+  for(let i=0;i<70;i++){cx.fillStyle=`rgba(230,235,255,${.3+.5*hash(i*7.1)})`;cx.fillRect(c.x-R+hash(i*1.7)*R*2,c.y-R+hash(i*3.3)*R*2,1.4,1.4);}
+  if(e.id==='moon')scopeMoon(dt,e,c,R);else if(e.id==='europa')scopeEuropa(dt,e,c,R);else scopeJupiter(dt,e,c,R);
+  cx.restore();
+  if(ev!==e)return;
+  cx.strokeStyle='rgba(200,210,255,.5)';cx.lineWidth=3;cx.beginPath();cx.arc(c.x,c.y,R,0,7);cx.stroke();
+  cx.strokeStyle='rgba(200,210,255,.12)';cx.lineWidth=1;cx.beginPath();cx.moveTo(c.x-R,c.y);cx.lineTo(c.x+R,c.y);cx.moveTo(c.x,c.y-R);cx.lineTo(c.x,c.y+R);cx.stroke();
+  const S=SCOPES[e.id];cx.textAlign='center';cx.font=`900 18px ${FONT}`;cx.fillStyle='#fff3d6';cx.fillText(S.title,c.x,c.y+R+28);
+  cx.font=`500 12px ${FONT}`;cx.fillStyle='#bfc6ff';cx.fillText(S.sub,c.x,c.y+R+47);
+  for(let i=e.fx.length-1;i>=0;i--){const f=e.fx[i];f.life-=dt*.9;f.y-=dt*24;if(f.life<=0){e.fx.splice(i,1);continue;}
+    cx.globalAlpha=Math.min(1,f.life*1.6);cx.font=`900 15px ${FONT}`;cx.fillStyle='#fff3d6';cx.fillText(f.txt,f.x,f.y);cx.globalAlpha=1;}}
+function scopeMoon(dt,e,c,R){
+  [[-.35,-.2,.7,'255,110,170'],[.3,.15,.65,'110,200,255'],[0,.35,.55,'190,120,255'],[.2,-.4,.5,'255,190,120']].forEach(([a,b,r,col],i)=>{
+    const g=cx.createRadialGradient(c.x+a*R,c.y+b*R,0,c.x+a*R,c.y+b*R,r*R);g.addColorStop(0,`rgba(${col},${.28+.05*Math.sin(T+i)})`);g.addColorStop(1,`rgba(${col},0)`);
+    cx.fillStyle=g;cx.fillRect(c.x-R,c.y-R,R*2,R*2);});
+  const core=Math.min(1,e.score/12),lit=e.stage!=='look';
+  if(e.stage==='disk'||e.stage==='done'){const k=Math.min(1,(e.stage==='done'?4.5+e.t:e.t)/2);cx.save();cx.translate(c.x,c.y);cx.scale(1,.32);
+    for(let i=0;i<90;i++){const rr=R*(.18+.6*hash(i*2.3)),a=hash(i*5.1)*6.283+T*(.9/(rr/R+.2));
+      cx.fillStyle=`rgba(255,${(180+60*hash(i))|0},140,${.5*(1-k*.6)})`;cx.fillRect(Math.cos(a)*rr,Math.sin(a)*rr,2,2);}
+    if(k>.3)[[.3,'#c8a27a',4],[.48,'#7fb0e0',5],[.7,'#e0b080',7]].forEach(([d,col,r],i)=>{const a=T*(.8/(d+.1))+i*2;
+      cx.globalAlpha=Math.min(1,(k-.3)*2);cx.fillStyle=col;cx.beginPath();cx.ellipse(Math.cos(a)*d*R,Math.sin(a)*d*R,r,r/.32,0,0,7);cx.fill();});
+    cx.restore();cx.globalAlpha=1;}
+  const sr=R*(.04+core*.08)*(lit?1.25:1);
+  cx.save();cx.shadowColor=lit?'rgba(255,240,200,1)':'rgba(255,120,60,.9)';cx.shadowBlur=lit?40+10*Math.sin(T*4):10+core*25;
+  const g=cx.createRadialGradient(c.x,c.y,0,c.x,c.y,sr);g.addColorStop(0,lit?'#ffffff':`rgb(255,${(150+core*80)|0},${(80+core*60)|0})`);g.addColorStop(1,lit?'rgba(255,230,150,.25)':'rgba(180,60,40,.25)');
+  cx.fillStyle=g;cx.beginPath();cx.arc(c.x,c.y,sr,0,7);cx.fill();cx.restore();
+  if(lit){cx.strokeStyle='rgba(255,245,220,.5)';cx.lineWidth=1.5;for(let k=0;k<8;k++){const a=k*Math.PI/4+T*.2,l=sr*(2.4+.4*Math.sin(T*3+k));
+    cx.beginPath();cx.moveTo(c.x+Math.cos(a)*sr*1.1,c.y+Math.sin(a)*sr*1.1);cx.lineTo(c.x+Math.cos(a)*l,c.y+Math.sin(a)*l);cx.stroke();}}
+  if(e.stage==='ignite'&&e.t<.8){cx.fillStyle=`rgba(255,250,235,${(1-e.t/.8)*.8})`;cx.fillRect(c.x-R,c.y-R,R*2,R*2);}
+  for(let i=e.items.length-1;i>=0;i--){const q=e.items[i];q.ph+=dt;
+    if(q.pull>0){q.pull+=dt*1.4;q.d=Math.max(0,q.d-dt*1.1);
+      if(q.d<=.05){e.items.splice(i,1);e.score++;if(sound)sPing();updateHud();
+        if(e.score>=12&&e.stage==='look'){e.stage='ignite';e.t=0;if(sound){sChime();sPowan();}
+          $('hint').textContent='ガスがぎゅっと集まり、まん中が1000万℃をこえた！ 赤ちゃん星が光りはじめた';}continue;}}
+    const a=q.a+Math.sin(q.ph*.5)*.05+(q.pull>0?q.pull*1.5:0),x=c.x+Math.cos(a)*q.d*R,y=c.y+Math.sin(a)*q.d*R,r=q.r*R;
+    const gg=cx.createRadialGradient(x,y,0,x,y,r);gg.addColorStop(0,`hsla(${q.hue},90%,80%,.85)`);gg.addColorStop(1,`hsla(${q.hue},90%,60%,0)`);
+    cx.fillStyle=gg;cx.beginPath();cx.arc(x,y,r,0,7);cx.fill();q.x=x;q.y=y;}
+  if(e.stage==='ignite'&&e.t>3){e.stage='disk';e.t=0;$('hint').textContent='のこったちりが星のまわりで円盤になり、くっつき合って惑星のたねになる。太陽系も、こうして生まれた';}
+  if(e.stage==='disk'&&e.t>4.5)scopeDone('星の誕生を見た！','オリオン大星雲では、いまも新しい星が生まれている。太陽も約46億年前、こうして生まれた');}
+function drawDiamond(x,y,r,rot,a){cx.save();cx.translate(x,y);cx.rotate(Math.sin(rot)*.3);cx.globalAlpha=Math.min(1,a*2);
+  cx.shadowColor='rgba(180,230,255,1)';cx.shadowBlur=12;cx.fillStyle='#eaf8ff';
+  cx.beginPath();cx.moveTo(-r,-r*.3);cx.lineTo(-r*.5,-r*.8);cx.lineTo(r*.5,-r*.8);cx.lineTo(r,-r*.3);cx.lineTo(0,r);cx.closePath();cx.fill();
+  cx.shadowBlur=0;cx.strokeStyle='rgba(120,170,230,.8)';cx.lineWidth=1;cx.beginPath();cx.moveTo(-r,-r*.3);cx.lineTo(r,-r*.3);
+  cx.moveTo(-r*.5,-r*.8);cx.lineTo(-r*.2,-r*.3);cx.lineTo(0,r);cx.lineTo(r*.2,-r*.3);cx.lineTo(r*.5,-r*.8);cx.stroke();cx.restore();}
+function scopeEuropa(dt,e,c,R){e.zv=lerp(e.zv,e.zoom,Math.min(1,dt*4));const k=(e.zv-1)/5,sr=R*(.035+k*.5);
+  cx.save();cx.shadowColor='rgba(200,225,255,1)';cx.shadowBlur=30+10*Math.sin(T*2);
+  const g=cx.createRadialGradient(c.x-sr*.2,c.y-sr*.2,0,c.x,c.y,sr);g.addColorStop(0,'#ffffff');g.addColorStop(.7,'#e6f0ff');g.addColorStop(1,'#a8c4ff');
+  cx.fillStyle=g;cx.beginPath();cx.arc(c.x,c.y,sr,0,7);cx.fill();cx.restore();
+  if(k>.3){cx.save();cx.beginPath();cx.arc(c.x,c.y,sr,0,7);cx.clip();cx.globalAlpha=Math.min(1,(k-.3)*1.6);
+    for(let i=-7;i<=7;i++)for(let j=-7;j<=7;j++){const hx=c.x+(i+(Math.abs(j)%2)*.5)*sr*.26,hy=c.y+j*sr*.225;
+      cx.strokeStyle=`rgba(120,160,230,${.25+.2*Math.sin(T*2+i+j)})`;cx.lineWidth=1;cx.beginPath();
+      for(let q=0;q<6;q++){const a=q*Math.PI/3+Math.PI/6,px=hx+Math.cos(a)*sr*.15,py=hy+Math.sin(a)*sr*.15;q?cx.lineTo(px,py):cx.moveTo(px,py);}cx.closePath();cx.stroke();}
+    for(let i=0;i<12;i++){const a=hash(i*3.1)*6.283,d=hash(i*1.3)*sr*.85,x=c.x+Math.cos(a)*d,y=c.y+Math.sin(a)*d,s=(2+3*Math.max(0,Math.sin(T*3+i)))*(.5+k);
+      cx.strokeStyle='rgba(255,255,255,.9)';cx.lineWidth=1.2;cx.beginPath();cx.moveTo(x-s,y);cx.lineTo(x+s,y);cx.moveTo(x,y-s);cx.lineTo(x,y+s);cx.stroke();}
+    cx.restore();}
+  if(e.stage==='crystal'){e.spawn-=dt;
+    if(e.spawn<=0&&e.items.length<5&&e.score+e.items.length<8){e.spawn=.6;const a=rnd(0,6.283);
+      e.items.push({x:c.x+Math.cos(a)*sr*.9,y:c.y+Math.sin(a)*sr*.9,vx:Math.cos(a)*rnd(18,40),vy:Math.sin(a)*rnd(18,40),rot:rnd(0,6),life:1});}
+    for(let i=e.items.length-1;i>=0;i--){const d=e.items[i];d.x+=d.vx*dt;d.y+=d.vy*dt;d.rot+=dt*2;d.life-=dt*.1;
+      if(d.life<=0||Math.hypot(d.x-c.x,d.y-c.y)>R-6){e.items.splice(i,1);continue;}drawDiamond(d.x,d.y,10,d.rot,d.life);}}}
+function scopeJupiter(dt,e,c,R){const jx=c.x+R*.25,jy=c.y+R*1.55,jr=R*1.25;
+  drawJupiter(jx,jy,jr,.3);
+  for(const s of e.spots){s.t+=dt;const g=1+Math.min(1,s.t);cx.fillStyle=`rgba(40,20,20,${Math.min(.6,s.t*2)})`;
+    cx.beginPath();cx.ellipse(s.x,s.y,s.r*g,s.r*.45*g,s.rot,0,7);cx.fill();}
+  for(const f of e.items){if(f.hit)continue;f.p+=dt*(f.fast?1.1:.12);if(f.p<0)continue;
+    const sx=c.x-R*.95+f.k*R*.07,sy=c.y-R*.75+f.k*R*.035,a=-Math.PI/2-.45+f.k*.11,tx=jx+Math.cos(a)*jr,ty=jy+Math.sin(a)*jr;
+    const x=lerp(sx,tx,Math.min(1,f.p)),y=lerp(sy,ty,Math.min(1,f.p));f.x=x;f.y=y;
+    if(f.p>=1){f.hit=true;e.score++;e.spots.push({x:tx,y:ty+4,r:R*.05,t:0,rot:a+Math.PI/2});e.booms.push({x:tx,y:ty,t:0});
+      if(sound)sThud();e.fx.push({x:tx,y:ty-24,txt:'ドーン！',life:1});updateHud();continue;}
+    const ang=Math.atan2(ty-sy,tx-sx);cx.strokeStyle='rgba(200,230,255,.35)';cx.lineWidth=3;cx.lineCap='round';
+    cx.beginPath();cx.moveTo(x,y);cx.lineTo(x-Math.cos(ang)*R*.18,y-Math.sin(ang)*R*.18);cx.stroke();
+    cx.save();cx.fillStyle='#f4fbff';cx.shadowColor='rgba(180,220,255,1)';cx.shadowBlur=10;cx.beginPath();cx.arc(x,y,3.6,0,7);cx.fill();cx.restore();}
+  for(let i=e.booms.length-1;i>=0;i--){const b=e.booms[i];b.t+=dt;if(b.t>1.6){e.booms.splice(i,1);continue;}const k=b.t/1.6;
+    cx.fillStyle=`rgba(255,240,200,${(1-k)*.9})`;cx.beginPath();cx.arc(b.x,b.y,4+k*R*.18,Math.PI,0);cx.fill();
+    cx.strokeStyle=`rgba(255,180,120,${(1-k)*.7})`;cx.lineWidth=2;cx.beginPath();cx.arc(b.x,b.y,6+k*R*.28,Math.PI*1.1,Math.PI*1.9);cx.stroke();}
+  if(e.stage==='look'&&e.score>=8){e.stage='after';e.t=0;
+    $('hint').textContent='木星は重いので、彗星を引きよせる。木星をもっと重く、もっと小さくしていくと……光さえぬけ出せない「ブラックホール」になる';}
+  if(e.stage==='after'&&e.t>4.5)scopeDone('彗星の衝突を見た！','ぶつかったあとには、地球より大きな黒いあとが何週間も残った');}
+function scopeTap(px,py){const e=ev,c=scopeC(),R=scopeR();if(e.stage==='done')return;
+  if(e.id==='moon'){for(const q of e.items){if(q.pull>0||q.x===undefined)continue;
+      if(Math.hypot(px-q.x,py-q.y)<q.r*R+18){q.pull=.01;e.fx.push({x:q.x,y:q.y-10,txt:'ぎゅっ',life:.8});if(sound)sBeep(500+e.score*40);return;}}}
+  else if(e.id==='europa'){
+    if(e.stage==='look'){if(Math.hypot(px-c.x,py-c.y)<R){e.zoom=Math.min(6,e.zoom+1);if(sound)sPing();e.fx.push({x:px,y:py-10,txt:'ズーム',life:.7});updateHud();
+        if(e.zoom>=6){e.stage='crystal';e.t=0;e.score=0;if(sound)sKiin(false);
+          $('hint').textContent='冷えた白色矮星の中で、炭素が結晶に！ まるで巨大なダイヤモンド。とび出したかけらにふれて集めよう';updateHud();}}}
+    else if(e.stage==='crystal'){for(let i=e.items.length-1;i>=0;i--){const d=e.items[i];
+        if(Math.hypot(px-d.x,py-d.y)<26){e.items.splice(i,1);e.score++;if(sound)sKiin(true);e.fx.push({x:d.x,y:d.y-10,txt:'キラン',life:.8});updateHud();
+          if(e.score>=8)scopeDone('ダイヤモンドの星を見た！','ルーシーの重さは太陽の約1.1倍。太陽も、ずっと先に燃えつきると白色矮星になる');return;}}}}
+  else{for(const f of e.items){if(f.hit||f.fast||f.p<0||f.x===undefined)continue;
+      if(Math.hypot(px-f.x,py-f.y)<30){f.fast=true;e.fx.push({x:f.x,y:f.y-10,txt:'ヒュッ',life:.7});if(sound)sWhistle();return;}}}}
+
+/* ---------- 寄り道：ブラックホール ---------- */
+function fmtClock(sec){if(sec<60)return `${sec.toFixed(1)}秒`;const d=Math.floor(sec/86400),h=Math.floor(sec%86400/3600),m=Math.floor(sec%3600/60),s2=Math.floor(sec%60);
+  if(d>=1)return `${d}日${h}時間`;if(h>=1)return `${h}時間${m}分`;return `${m}分${s2}秒`;}
+function startBH(){ev={type:'bh',stage:'pull',t:0,self:0,far:0,x:0,esc:0,sp:[]};
+  $('hint').textContent='ワープの途中で、船が強い重力につかまった！ 見えない黒い星――ブラックホールだ';$('hint').style.opacity=1;
+  showBanner('ブラックホール','光さえぬけ出せない星',true,2800);if(sound)sOminous();updateHud();}
+function bhHud(){const e=ev;$('lab').textContent='寄り道：ブラックホール';$('big').textContent=`時間のずれ ×${Math.round(Math.exp(e.x)).toLocaleString()}`;
+  $('sub').textContent=e.stage==='escape'?`ぬけ出す力 ${Math.round(Math.min(1,e.esc)*100)}%`:e.stage==='out'?'ぬけ出した！':'重力に引っぱられている';}
+function bhTap(px,py){const e=ev;if(e.stage!=='escape')return;e.esc+=.06;
+  for(let k=0;k<6;k++)e.sp.push({x:W*.5+rnd(-30,30),y:H*.92,vx:rnd(-60,60),vy:rnd(80,200),life:1});
+  floats.push({x:px,y:py-20,txt:'ゴォッ',life:.6,small:true});if(sound){const t=ac().currentTime;grain(t,220,.6,.25,.5);}
+  if(e.esc>=1){e.stage='out';e.t=0;if(sound)sChime();$('hint').textContent='ぬけ出した！';}}
+function drawDisk(c,Rb,back){cx.save();cx.translate(c.x,c.y);cx.scale(1,.28);
+  for(let r=Rb*1.4;r<Rb*3.2;r+=Rb*.12){const a0=back?Math.PI:0;
+    cx.strokeStyle=`hsla(${30+(r/Rb)*8},100%,${72-(r/Rb)*8}%,${.55*(1-(r-Rb*1.4)/(Rb*1.8))})`;cx.lineWidth=Rb*.09;cx.beginPath();cx.arc(0,0,r,a0+T*.0,a0+Math.PI);cx.stroke();}
+  cx.restore();
+  if(back){cx.save();cx.strokeStyle='rgba(255,190,120,.45)';cx.lineWidth=Rb*.16;cx.beginPath();cx.ellipse(c.x,c.y,Rb*1.35,Rb*1.22,0,Math.PI,0);cx.stroke();cx.restore();}}
+function endBH(){const e=ev;ev=null;bhDone=true;bhLog={self:e.self,far:e.far};bhHold=3.2;
+  showBanner('脱出成功！',`あなたは ${fmtClock(e.self)}。でも地球では ${fmtClock(e.far)} すぎていた`,false,4200);sChime();
+  $('hint').textContent='重力が強い場所では、時間がゆっくり進む（アインシュタインの一般相対性理論）。ブラックホールのそばでは、その差がとても大きくなる';
+  updateHud();
+  if(diaryRead)setTimeout(()=>{if(phase==='home'&&!ev)openBook([['日記の切れはし','黒い星のそばを通ったら、時計がへんになった。わたしにとっては、ほんの少しの時間だった。'],
+    ['','でも外の世界では、100年がすぎていた。……だから、この日記は「100年後」の記録になってしまったの。']],'日記の切れはし',null,'letter');},2600);}
+function bhFrame(dt){if(bhHold>0)bhHold-=dt;if(!ev||ev.type!=='bh')return;const e=ev;e.t+=dt;
+  if(e.stage==='pull'){e.x+=dt*1.3;if(e.t>4.5){e.stage='escape';e.t=0;$('hint').textContent='エンジン全開！ 画面をどんどんタップして、ぬけ出そう！';showBanner('エンジン全開！','タップ連打！',false,1800);}}
+  else if(e.stage==='escape'){e.x=Math.min(12,e.x+dt*1.3);if(e.t>12)e.esc+=dt*.12;if(e.esc>=1){e.stage='out';e.t=0;if(sound)sChime();}}
+  else if(e.stage==='out'){e.x=Math.max(0,e.x-dt*5);if(e.x<=0&&e.t>2.2){endBH();return;}}
+  const f=Math.exp(e.x);e.self+=dt;e.far+=dt*f;
+  const c={x:W*.5,y:H*.4},k=Math.min(1,e.x/12),Rb=Math.min(W,H)*(.06+.1*k);
+  cx.fillStyle=`rgba(0,0,0,${Math.min(.88,.55+k*.4)})`;cx.fillRect(0,0,W,H);
+  for(let i=0;i<80;i++){const a=hash(i*2.7)*6.283+T*(.05+.6*k)/(.3+hash(i)),d=Rb*(1.3+hash(i*4.1)*5),dd=Math.max(Rb*1.15,d-(d-Rb*1.3)*k*.4);
+    cx.fillStyle=`rgba(230,235,255,${.4+.5*hash(i*9.1)})`;cx.fillRect(c.x+Math.cos(a)*dd,c.y+Math.sin(a)*dd*.9,1.6,1.6);}
+  drawDisk(c,Rb,true);
+  cx.save();cx.shadowColor='rgba(255,200,140,.9)';cx.shadowBlur=20;cx.strokeStyle='rgba(255,225,175,.9)';cx.lineWidth=2.5;cx.beginPath();cx.arc(c.x,c.y,Rb*1.08,0,7);cx.stroke();cx.restore();
+  cx.fillStyle='#000';cx.beginPath();cx.arc(c.x,c.y,Rb,0,7);cx.fill();
+  drawDisk(c,Rb,false);
+  for(let i=e.sp.length-1;i>=0;i--){const s=e.sp[i];s.x+=s.vx*dt;s.y+=s.vy*dt;s.life-=dt*2;if(s.life<=0){e.sp.splice(i,1);continue;}
+    cx.fillStyle=`rgba(255,${(180+60*s.life)|0},120,${s.life})`;cx.beginPath();cx.arc(s.x,s.y,2.5,0,7);cx.fill();}
+  const w=Math.min(320,W-32),x0=(W-w)/2,y0=H*.62;
+  cx.fillStyle='rgba(14,18,44,.85)';cx.strokeStyle='rgba(255,210,150,.4)';cx.lineWidth=1;cx.beginPath();cx.roundRect(x0,y0,w,e.stage==='escape'?104:84,14);cx.fill();cx.stroke();
+  cx.textAlign='center';cx.font=`700 11px ${FONT}`;cx.fillStyle='#bfc6ff';cx.fillText('あなたの時計',x0+w*.27,y0+20);cx.fillText('地球の時計',x0+w*.73,y0+20);
+  cx.font=`900 18px ${FONT}`;cx.fillStyle='#eef0ff';cx.fillText(fmtClock(e.self),x0+w*.27,y0+44);cx.fillStyle='#ffd27a';cx.fillText(fmtClock(e.far),x0+w*.73,y0+44);
+  cx.font=`500 11px ${FONT}`;cx.fillStyle='#d9e2ff';cx.fillText(`地球の時間は、あなたの約${Math.round(f).toLocaleString()}倍の速さで進んでいる`,x0+w/2,y0+68);
+  if(e.stage==='escape'){cx.fillStyle='rgba(255,255,255,.12)';cx.beginPath();cx.roundRect(x0+14,y0+82,w-28,8,4);cx.fill();
+    cx.fillStyle='#ffb070';cx.beginPath();cx.roundRect(x0+14,y0+82,(w-28)*Math.min(1,e.esc),8,4);cx.fill();}
+  updateHud();}
 
 let last=performance.now();
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;T+=dt;
