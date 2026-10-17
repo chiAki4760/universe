@@ -68,6 +68,9 @@ button.go{border-color:rgba(255,210,122,.6);}
 .rec{display:grid;grid-template-columns:auto 1fr;gap:8px 14px;text-align:left;margin:0 0 18px;font-variant-numeric:tabular-nums;font-size:14px;}
 .rec dt{font-weight:700;color:var(--gold);}
 .rec dd{margin:0;}
+.cbtns{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;}
+.card p.warn{margin:12px 0 0;color:#ffc9b8;font-size:12px;line-height:1.6;}
+.card p.saved{margin:12px 0 0;font-size:11px;}
 </style>
 </head>
 <body>
@@ -106,11 +109,20 @@ button.go{border-color:rgba(255,210,122,.6);}
   <div class="dnav"><button id="dprev" type="button">まえ</button><span id="dpg">1 / 7</span><button id="dnext" type="button">つぎ</button></div>
 </div>
 
+<div class="card" id="start" hidden role="dialog" aria-label="旅のつづき">
+  <h2>星くずの旅</h2>
+  <p id="startmsg">前の旅の記録が残っています</p>
+  <dl class="rec" id="startrec"></dl>
+  <div class="cbtns"><button id="cont" type="button" class="go">つづきから</button><button id="fresh" type="button">はじめから</button></div>
+  <p class="warn" id="freshwarn" hidden>日記・置き手紙・モフとの記録が消えます。もう一度おすと、はじめからになります</p>
+</div>
+
 <div class="card" id="card" hidden>
   <h2>おかえりなさい</h2>
   <p id="trips">地球に帰ってきました</p>
   <dl class="rec" id="rec"></dl>
   <button id="restart" type="button" class="go">もう一度旅に出る</button>
+  <p class="saved">記録は、このブラウザに残ります</p>
 </div>
 
 <script>
@@ -256,10 +268,13 @@ let broken=0,totalBroken=0,progress=0,progressShown=0;
 let meteors=[],shards=[],floats=[],spawnT=0;
 let log={};
 let ev=null,shake=0,radioLog={},radioStarted={},hellLog={},extraCraters=[];
-let ship=null,shipN=0,shipHomeTried=false,diaryRead=false,traces={},trace=null,returnPhase='fly',shipT=0,shipLooked={},presence=null,presenceT=8;
+let ship=null,shipN=0,shipHomeTried=false,diaryRead=false,traces=loadLetters(),trace=null,returnPhase='fly',shipT=0,shipLooked={},presence=null,presenceT=8;
 try{diaryRead=localStorage.getItem('hoshikuzu-diary')==='1';}catch(e){}
 let trips=0;try{trips=+localStorage.getItem('hoshikuzu-trips')||0;}catch(e){}
 let petJoined=false;try{petJoined=localStorage.getItem('hoshikuzu-pet')==='1';}catch(e){}
+let partyEver=false;try{partyEver=localStorage.getItem('hoshikuzu-party')==='1';}catch(e){}
+function loadLetters(){const t={};try{(JSON.parse(localStorage.getItem('hoshikuzu-letters')||'[]')||[]).forEach(k=>{if(['moon','europa','jupiter'].includes(k))t[k]=true;});}catch(e){}return t;}
+function saveLetters(){try{localStorage.setItem('hoshikuzu-letters',JSON.stringify(Object.keys(traces)));}catch(e){}}
 let pet=null,petCalled=false,partyDone=false,partyTaps={},book=null,mapShown=false,jellyGlow=0;
 const allLetters=()=>!!(traces.moon&&traces.europa&&traces.jupiter);
 
@@ -389,6 +404,7 @@ function updateHud(){
 /* ---------- 入力 ---------- */
 cv.addEventListener('pointerdown',e=>{
   if(sound)ac();
+  if(!$('start').hidden)return;
   if(!$('diary').hidden)return;
   const r=cv.getBoundingClientRect(),px=e.clientX-r.left,py=e.clientY-r.top;
   if(phase==='fly'){
@@ -404,7 +420,8 @@ cv.addEventListener('pointerdown',e=>{
 $('grav').onclick=e=>{e.stopPropagation();gMode=gMode==='star'?'earth':'star';setGravLabel();};
 $('next').onclick=e=>{e.stopPropagation();if(player.air||ev)return;
   if(L<LEGS.length-1)startLeg(L+1);else startHome();};
-$('restart').onclick=e=>{e.stopPropagation();log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces={};scopeLog={};bhDone=false;bhLog=null;pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);};
+function resetTrip(){log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};bhDone=false;bhLog=null;pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
+$('restart').onclick=e=>{e.stopPropagation();resetTrip();};
 
 /* ---------- 帰り道 ---------- */
 let homeT=0;
@@ -787,7 +804,7 @@ function enterShip(){returnPhase=phase;ship=null;phase='ship';shipT=0;shipLooked
   $('shipbar').hidden=!diaryRead;$('shipexit').textContent='船を出る';
   if(diaryRead&&!petJoined)$('hint').textContent='かごの中で、なにかが寝ている…？ ふれてみよう';
   showBanner('メアリー・セレスト号','だれもいない',false,2400);if(sound)sCreak();updateHud();}
-function exitShip(){if(phase==='party'){partyDone=true;showBanner('またね','メアリー・セレスト号も、地球へ',false,2600);}
+function exitShip(){if(phase==='party'){partyDone=true;partyEver=true;try{localStorage.setItem('hoshikuzu-party','1');}catch(e){}showBanner('またね','メアリー・セレスト号も、地球へ',false,2600);}
   $('shipbar').hidden=true;$('diary').hidden=true;phase=returnPhase;
   if(phase==='fly'){$('hint').textContent=flyHint();$('hint').style.opacity=1;}else $('hint').style.opacity=0;updateHud();}
 function roomGeo(){const u=Math.min(W,H*.7)/400,tx=W*.5,ty=H*.66,fy=H*.74;return {u,tx,ty,fy};}
@@ -938,7 +955,7 @@ function drawTrace(gy){if(!trace)return;const x=trace.wx-camX;if(x<-400||x>W+120
       cx.fillStyle='rgba(120,80,60,.8)';cx.beginPath();cx.arc(x-4,y-31,1.8,0,7);cx.arc(x+4,y-31,1.8,0,7);cx.fill();cx.restore();}}}
 function traceTap(px,py){if(!trace||trace.found)return false;const x=trace.wx-camX,yt=py-camY,gy=groundY();
   const cy=cur==='jupiter'?surfY(trace.wx)-30:gy+(cur==='europa'?32:8),rx=cur==='europa'?140:cur==='jupiter'?80:60,ry=cur==='jupiter'?75:45;
-  if(Math.abs(px-x)<rx&&Math.abs(yt-cy)<ry){trace.found=true;trace.at=T;traces[cur]=true;
+  if(Math.abs(px-x)<rx&&Math.abs(yt-cy)<ry){trace.found=true;trace.at=T;traces[cur]=true;saveLetters();
     floats.push({x:trace.wx,y:cy-30,txt:cur==='jupiter'?'まだ、あたたかい…！':'置き手紙！',life:1.5});$('hint').textContent=TRACE_TEXT[cur];
     if(pet){pet.air=true;pet.vy=V0*.9;floats.push({x:pet.x,y:surfY(pet.x)-60,txt:cur==='jupiter'?'クーン…！':'キュッ！',life:1.2,small:true});sSqueak();}
     {const id=cur;setTimeout(()=>{if(phase==='walk'&&cur===id)openLetter(id);},1500);}
@@ -1386,7 +1403,25 @@ function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;T+=dt;
   if(phase==='fly')frameFly(dt,false);else if(phase==='landing')frameFly(dt,true);
   else if(phase==='walk')frameWalk(dt);else if(phase==='ship'||phase==='party')frameShip(dt);else frameHome(dt);
   requestAnimationFrame(loop);}
-window.addEventListener('resize',resize);resize();startLeg(0);requestAnimationFrame(loop);
+/* ---------- つづきから／はじめから ---------- */
+function showStart(){
+  if(!trips&&!diaryRead&&!petJoined&&!Object.keys(traces).length)return;
+  const rec=$('startrec');rec.innerHTML='';
+  const row=(a,b)=>{const dt=document.createElement('dt'),dd=document.createElement('dd');dt.textContent=a;dd.textContent=b;rec.append(dt,dd);};
+  row('旅',trips?`${trips}回 地球に帰ってきた`:'まだ帰っていない');
+  row('日記',diaryRead?'読んだ':'まだ');
+  if(diaryRead)row('置き手紙',`${Object.keys(traces).length} / 3 まい`+(Object.keys(traces).length?`（${['moon','europa','jupiter'].filter(k=>traces[k]).map(k=>STAGES[k].name).join('・')}）`:''));
+  if(petJoined)row('相棒','モフ');
+  if(partyEver)row('おちゃかい','みんなでお茶を飲んだ');
+  $('startmsg').textContent=partyEver?'お茶会のあとの旅です。また会いに行こう':'前の旅の記録が残っています';
+  $('freshwarn').hidden=true;$('fresh').textContent='はじめから';$('start').hidden=false;}
+$('start').addEventListener('pointerdown',e=>e.stopPropagation());
+$('cont').onclick=e=>{e.stopPropagation();$('start').hidden=true;};
+$('fresh').onclick=e=>{e.stopPropagation();
+  if($('freshwarn').hidden){$('freshwarn').hidden=false;$('fresh').textContent='消して、はじめから';return;}
+  ['hoshikuzu-trips','hoshikuzu-diary','hoshikuzu-pet','hoshikuzu-letters','hoshikuzu-party'].forEach(k=>{try{localStorage.removeItem(k);}catch(err){}});
+  trips=0;diaryRead=false;petJoined=false;partyEver=false;$('start').hidden=true;resetTrip();};
+window.addEventListener('resize',resize);resize();startLeg(0);showStart();requestAnimationFrame(loop);
 })();
 </script>
 </body>
