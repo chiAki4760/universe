@@ -38,11 +38,12 @@ button{font-family:var(--font);font-weight:700;font-size:13px;color:var(--ink);b
 button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 button.on{border-color:var(--gold);color:var(--gold);}
 button.go{border-color:rgba(255,210,122,.6);}
+.bottombar button{pointer-events:auto;}
 .hint{position:fixed;left:0;right:0;bottom:0;text-align:center;
   padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
   font-size:13px;line-height:1.5;color:var(--ink);pointer-events:none;transition:opacity .6s;text-shadow:0 1px 2px rgba(0,0,10,.95),0 0 10px rgba(0,0,10,.9);}
-.bottombar{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:10px;flex-wrap:wrap;
+.bottombar{position:fixed;left:0;right:0;bottom:0;display:flex;pointer-events:none;justify-content:center;gap:10px;flex-wrap:wrap;
   padding-bottom:calc(58px + env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));}
 .banner{position:fixed;left:50%;top:36%;transform:translate(-50%,-50%);text-align:center;pointer-events:none;
@@ -437,7 +438,7 @@ addEventListener('pointerup',()=>{invPress=false;sailHold=0;});addEventListener(
 $('grav').onclick=e=>{e.stopPropagation();gMode=gMode==='star'?'earth':'star';setGravLabel();};
 $('next').onclick=e=>{e.stopPropagation();if(player.air||ev)return;
   if(L<LEGS.length-1)startLeg(L+1);else startHome();};
-function resetTrip(){log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};invLog={};invWins=0;invTries=0;atkLog={};glitch=0;sailLog=null;sunSeen={};bhDone=false;bhLog=null;pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
+function resetTrip(){log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};invLog={};invWins=0;invTries=0;atkLog={};glitch=0;sailLog=null;sunSeen={};bhDone=false;bhLog=null;bugLog={hit:0,dodge:0};pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
 $('restart').onclick=e=>{e.stopPropagation();resetTrip();};
 
 /* ---------- 帰り道 ---------- */
@@ -455,6 +456,7 @@ function showCard(){phase='end';trips++;try{localStorage.setItem('hoshikuzu-trip
   if(diaryRead){row('メアリー・セレスト号','日記を読んだ');row('置き手紙',`${Object.keys(traces).length} / 3 まい`);}
   if(petJoined)row('相棒','モフ');
   if(partyDone)row('おちゃかい','日記の人と、みんなでお茶を飲んだ');
+  if(bugLog.hit||bugLog.dodge)row('月の黒い生き物',`よけた ${bugLog.dodge}回・ぶつかった ${bugLog.hit}回`);
   if(invTries)row('星くずの隊列',`${invWins} / ${invTries} くずした`);
   {const a=Object.values(atkLog);if(a.length)row('謎の電波攻撃',`打ち消したノイズ ${a.reduce((s,x)=>s+x.got,0)}こ`);}
   if(sailLog)row('光の帆',`${fmtKm(sailLog.gain*LEGS[1].km)} 進んだ（いちばんよい角度の ${Math.round(sailLog.best*100)}%）`);
@@ -985,12 +987,21 @@ function traceTap(px,py){if(!trace||trace.found)return false;const x=trace.wx-ca
   return false;}
 function updatePresence(dt){
   if(!presence){presenceT-=dt;if(presenceT<=0&&!ev){
-      const sand=cur==='moon'&&Math.random()<.7;
+      const sand=cur==='moon'&&Math.random()<.45;
       presence={t:0,dur:sand?8:cur==='jupiter'?9:6,dir:Math.random()<.5?1:-1,kind:sand?'sand':'base',trail:[],sp:[],spT:0};
       if(sand){if(sound)noiseLong(ac().currentTime,7,130,.7,.3,1,'lowpass');presence.prevHint=$('hint').textContent;$('hint').textContent='足もとの砂の中を、なにかが動いている…';}
       else if(sound){const t=ac().currentTime;tone(t,98,92,2.4,.06);tone(t+.1,147,140,2,.03);}
+      if(!sand&&cur==='moon'){presence.prevHint=$('hint').textContent;$('hint').textContent='黒い生き物が走ってくる！ タップでジャンプして、よけよう';}
       floats.push({x:camX+W*.7,y:groundY()-140,txt:'…？',life:1.2,small:true});}return;}
-  presence.t+=dt;if(presence.t>presence.dur){if(presence.kind==='sand'&&!ev&&$('hint').textContent.startsWith('足もとの砂'))$('hint').textContent=presence.prevHint;presence=null;presenceT=rnd(14,24);}}
+  presence.t+=dt;bugCheck(presence);if(presence.t>presence.dur){if(presence.kind==='base'&&cur==='moon'&&$('hint').textContent.startsWith('黒い生き物'))$('hint').textContent=presence.prevHint;if(presence.kind==='sand'&&!ev&&$('hint').textContent.startsWith('足もとの砂'))$('hint').textContent=presence.prevHint;presence=null;presenceT=rnd(14,24);}}
+let bugLog={hit:0,dodge:0};
+function bugCheck(p){if(p.kind!=='base'||cur!=='moon'||ev||p.done)return;const q=p.t/p.dur,x=p.dir>0?lerp(-80,W+80,q):lerp(W+80,-80,q),ax=W*.32;
+  if(Math.abs(x-ax)>24)return;p.done=true;
+  if(player.h>34){bugLog.dodge++;floats.push({x:player.x,y:surfY(player.x)-player.h-130,txt:'よけた！',life:1,small:true});if(sound)sPing();
+    $('hint').textContent='ひょいっと、とびこえた';}
+  else{bugLog.hit++;player.x=Math.max(0,player.x-2.5*PXM);player.air=true;player.vy=V0*.45;player.vx=0;squash=1;shake=9;
+    floats.push({x:player.x,y:surfY(player.x)-150,txt:'−2.5 m',sub:'ぶつかって、押しもどされた',life:1.3});if(sound)sThud();
+    $('hint').textContent='黒い生き物にぶつかった！ 次はジャンプでよけよう';updateHud();}}
 function sandTap(px,py){const p=presence;if(!p||p.kind!=='sand'||p.dive||p.sx===undefined)return false;
   if(Math.abs(px-p.sx)<50&&Math.abs(py-camY-p.sy)<34){p.dive=true;p.dur=Math.min(p.dur,p.t+1.1);
     floats.push({x:p.sx+camX,y:p.sy-20,txt:'ズズッ…',life:1,small:true});$('hint').textContent='さわったら、砂の奥へもぐっていった…';
