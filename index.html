@@ -1680,6 +1680,7 @@ function garble(s){const g='＃％＆＠？！ア゛ザ※▒░';return [...s].
 
 let last=performance.now();
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;T+=dt;
+  if(cv.clientWidth!==W||cv.clientHeight!==H||Math.min(2,window.devicePixelRatio||1)!==DPR)resize(); // 縦横を切りかえたあと、サイズがずれたら合わせ直す
   if(phase==='fly')frameFly(dt,false);else if(phase==='landing')frameFly(dt,true);
   else if(phase==='walk')frameWalk(dt);else if(phase==='ship'||phase==='party')frameShip(dt);else frameHome(dt);
   applyGlitch(dt);
@@ -1706,7 +1707,7 @@ $('fresh').onclick=e=>{e.stopPropagation();
   if($('freshwarn').hidden){$('freshwarn').hidden=false;$('fresh').textContent='消して、はじめから';return;}
   ['hoshikuzu-trips','hoshikuzu-diary','hoshikuzu-pet','hoshikuzu-letters','hoshikuzu-party','hoshikuzu-specimens'].forEach(k=>{try{localStorage.removeItem(k);}catch(err){}});
   trips=0;diaryRead=false;petJoined=false;partyEver=false;specs=new Set();$('start').hidden=true;resetTrip();};
-window.addEventListener('resize',resize);resize();startLeg(0);showStart();requestAnimationFrame(loop);
+window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,300));if(window.visualViewport)visualViewport.addEventListener('resize',resize);resize();startLeg(0);showStart();requestAnimationFrame(loop);
 })();
 </script>
 </body>
