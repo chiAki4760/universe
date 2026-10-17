@@ -133,7 +133,7 @@ button.go{border-color:rgba(255,210,122,.6);}
   <h2>おかえりなさい</h2>
   <p id="trips">地球に帰ってきました</p>
   <dl class="rec" id="rec"></dl>
-  <div class="cbtns"><button id="restart" type="button" class="go">もう一度旅に出る</button><button id="box2" type="button">標本箱</button></div>
+  <div class="cbtns"><button id="restart" type="button" class="go">もう一度旅に出る</button><button id="sleep" type="button">眠る</button><button id="box2" type="button">標本箱</button></div>
   <p class="saved">記録は、このブラウザに残ります</p>
 </div>
 
@@ -420,6 +420,7 @@ function updateHud(){
     $('big').textContent=ev.t<HELL_DUR?`のこり ${Math.ceil(HELL_DUR-ev.t)} 秒`:'しずまってきた…';$('sub').textContent=`${h.unit} ${ev.score}こ`;return;}
   if(phase==='walk'){$('lab').textContent=`${STAGES[cur].name}　歩いたきょり`;$('big').textContent=(player.x/PXM).toFixed(1)+' m';
     $('sub').textContent=`${player.steps}歩　いちばん高く ${(player.maxH/PXM).toFixed(2)} m`;}
+  else if(phase==='sleep'){$('lab').textContent='地球で';$('big').textContent='おやすみ';$('sub').textContent='';}
   else if(phase==='home'||phase==='end'){$('lab').textContent='地球へ';$('big').textContent='帰り道';$('sub').textContent=`くだいた隕石と氷 ${totalBroken}こ`;}
   else{const leg=LEGS[L];$('lab').textContent=`${STAGES[leg.to].name}まで あと`;$('big').textContent=fmtKm(leg.km*(1-progressShown));
     $('sub').textContent=`くだいた${leg.ice?'氷・隕石':'隕石'} ${broken}こ / ${leg.need}`;}}
@@ -440,6 +441,7 @@ cv.addEventListener('pointerdown',e=>{
   }else if(phase==='home'){if(ev&&ev.type==='bh'){bhTap(px,py);return;}if(flyPetTap(px,py))return;if(shipTap(px,py))return;if(ev&&ev.type==='radio')radioTap(px,py);}
   else if(phase==='ship'){shipRoomTap(px,py);}
   else if(phase==='party'){partyTap(px,py);}
+  else if(phase==='sleep'){sleepTap(px,py);}
   else if(phase==='walk'){if(ev&&ev.type==='inv'){invPress=true;invPoint(px,true);return;}if(ev&&ev.type==='scope'){scopeTap(px,py);return;}if(ev&&ev.type==='hell'&&hellTap(px,py))return;if(traceTap(px,py))return;if(sandTap(px,py))return;if(standTap(px,py))return;if(petTap(px,py))return;if(sunTap(px,py))return;if(commTap(px,py))return;hop();}
 });
 cv.addEventListener('pointermove',e=>{if(!ev||!(ev.type==='inv'||ev.type==='sail')||!(invPress||e.pointerType==='mouse'&&e.buttons))return;const r=cv.getBoundingClientRect();if(ev.type==='inv')invPoint(e.clientX-r.left);else sailAim(e.clientX-r.left,e.clientY-r.top);});
@@ -1717,9 +1719,72 @@ let last=performance.now();
 function loop(now){const dt=Math.min(.05,(now-last)/1000);last=now;T+=dt;
   if(cv.clientWidth!==W||cv.clientHeight!==H||Math.min(2,window.devicePixelRatio||1)!==DPR)resize(); // 縦横を切りかえたあと、サイズがずれたら合わせ直す
   if(phase==='fly')frameFly(dt,false);else if(phase==='landing')frameFly(dt,true);
-  else if(phase==='walk')frameWalk(dt);else if(phase==='ship'||phase==='party')frameShip(dt);else frameHome(dt);
+  else if(phase==='walk')frameWalk(dt);else if(phase==='ship'||phase==='party')frameShip(dt);else if(phase==='sleep')frameSleep(dt);else frameHome(dt);
   applyGlitch(dt);
   requestAnimationFrame(loop);}
+
+/* ---------- 眠る（旅のあとのひと休み） ---------- */
+let sleepT=0,waking=0,dreams=[],lullT=0;
+function sLullaby(){if(!sound)return;const t=ac().currentTime,n=[392,330,294,330,392,440,392,0,330,294,262];
+  n.forEach((f,i)=>{if(f)tone(t+i*.55,f,f*.999,1.6,.045,'triangle');});}
+function makeDreams(){const d=[];
+  if(log.moon)d.push('月の砂の、ジャリ・ジャリという足音……');
+  if(log.europa)d.push('エウロパの氷が、キーンと鳴っている……');
+  if(log.jupiter)d.push('木星の雲の中で、ぼよよ〜んと、はねている……');
+  if(petJoined)d.push('モフが寝言を言っている……キュルン……');
+  if(diaryRead)d.push('メアリー・セレスト号で、だれかがお茶を入れている');
+  const n=Object.keys(traces).length;if(n&&n<3)d.push('のこりの置き手紙は、どの星にあるのだろう');
+  if(bhLog)d.push('ブラックホールのそばの、ゆっくり流れる時間……');
+  d.push('宇宙ステーションでは、寝袋を壁にとめて眠ります。宇宙には上も下もないから');
+  d.push('宇宙ステーションは90分ほどで地球を1周するので、1日に16回くらい日の出が見えます');
+  return d;}
+function startSleep(){$('card').hidden=true;phase='sleep';sleepT=0;waking=0;lullT=0;dreams=makeDreams();floats=[];
+  $('hint').textContent='おやすみなさい。モフ以外のところをタップすると、目がさめます';$('hint').style.opacity=1;updateHud();sLullaby();}
+function sleepGeo(){const base=Math.min(W,H),wr=base*.3,wx=W*.5,wy=H*.42;return {base,wr,wx,wy,px:W*.5,py:wy+wr+base*.13};}
+function frameSleep(dt){sleepT+=dt;const g=sleepGeo(),{base,wr,wx,wy}=g;
+  lullT+=dt;if(lullT>9&&!waking){lullT=0;sLullaby();}
+  // 船の中の、うす暗い部屋
+  const bg=cx.createLinearGradient(0,0,0,H);bg.addColorStop(0,'#0b0d22');bg.addColorStop(1,'#1a1530');cx.fillStyle=bg;cx.fillRect(0,0,W,H);
+  // まるい窓の外は、夜の地球
+  cx.save();cx.beginPath();cx.arc(wx,wy,wr,0,7);cx.clip();cx.fillStyle='#02030a';cx.fillRect(wx-wr,wy-wr,wr*2,wr*2);
+  drawStars(dt,4,undefined,.9);
+  drawEarth(wx+wr*.15,wy+wr*1.05,wr*1.1);
+  // 夜がわの町の明かり
+  for(let i=0;i<18;i++){const a=hash(i*2.3)*.9+3.3,d=wr*(.55+hash(i*5.1)*.5),x=wx+wr*.15+Math.cos(a)*d,y=wy+wr*1.05+Math.sin(a)*d;
+    cx.fillStyle=`rgba(255,214,140,${.35+.35*Math.sin(T*2+i)})`;cx.fillRect(x,y,1.6,1.6);}
+  cx.restore();
+  cx.strokeStyle='#5a5f80';cx.lineWidth=base*.03;cx.beginPath();cx.arc(wx,wy,wr,0,7);cx.stroke();
+  cx.strokeStyle='rgba(180,200,255,.25)';cx.lineWidth=2;cx.beginPath();cx.arc(wx,wy,wr*.92,Math.PI*1.1,Math.PI*1.45);cx.stroke();
+  // ねどこ
+  const bx=g.px,by=g.py,bw=base*.42;
+  cx.fillStyle='#3a3460';cx.beginPath();cx.ellipse(bx,by+8,bw*.6,base*.05,0,0,7);cx.fill();
+  cx.fillStyle='#6b5fa0';cx.beginPath();cx.ellipse(bx,by,bw*.5,base*.04,0,0,7);cx.fill();
+  const k=Math.max(.9,base/420);
+  if(petJoined){const br=1+Math.sin(sleepT*1.6)*.04;drawPet(bx,by+2,k*1.8*br,{sleep:true});}
+  else{cx.fillStyle='#8f84c4';cx.beginPath();cx.ellipse(bx,by-6,bw*.32,base*.035,0,Math.PI,0);cx.fill();}
+  // Zzz
+  for(let i=0;i<3;i++){const q=((sleepT*.35+i/3)%1),x=bx+base*.06+q*base*.12,y=by-base*.08-q*base*.18;
+    cx.globalAlpha=Math.sin(q*Math.PI)*.8;cx.fillStyle='#cfd6ff';cx.font=`900 ${Math.round((12+q*12)*k)}px ${FONT}`;cx.textAlign='center';cx.fillText('Z',x,y);}
+  cx.globalAlpha=1;
+  // ゆめのことば（ゆっくり入れかわる）
+  const per=6.5,di=Math.floor(sleepT/per)%dreams.length,ph=(sleepT%per)/per,a=Math.min(1,ph*4,(1-ph)*4);
+  if(dreams.length){cx.globalAlpha=a*.95;cx.fillStyle='#e8e4ff';cx.textAlign='center';cx.font=`700 ${Math.round(14*Math.min(1.25,k))}px ${FONT}`;
+    wrapText(dreams[di],W*.5,wy-wr-base*.1,Math.min(W-40,420),20*Math.min(1.25,k));cx.globalAlpha=1;}
+  drawFloats(dt);
+  // しだいに暗く、目ざめるときは明るく
+  const dark=waking?Math.max(0,.45-waking*.6):Math.min(.45,sleepT*.03);
+  if(waking){waking+=dt;cx.fillStyle=`rgba(255,236,200,${Math.min(.35,waking*.4)})`;cx.fillRect(0,0,W,H);}
+  cx.fillStyle=`rgba(0,0,8,${dark})`;cx.fillRect(0,0,W,H);}
+function wrapText(t,x,y,maxW,lh){const lines=[];let line='';for(const ch of t){if(cx.measureText(line+ch).width>maxW&&line){lines.push(line);line=ch;}else line+=ch;}
+  if(line)lines.push(line);const y0=y-(lines.length-1)*lh;lines.forEach((l,i)=>cx.fillText(l,x,y0+i*lh));}
+function sleepTap(px,py){if(waking)return;const g=sleepGeo();
+  if(petJoined&&Math.hypot(px-g.px,py-(g.py-28))<56){const R=['むにゃ……','キュ……','すぅ……すぅ……'];
+    floats.push({x:g.px,y:g.py-50,txt:R[Math.floor(Math.random()*R.length)],life:1.2,small:true});if(sound){const t=ac().currentTime;tone(t,700,900,.15,.03,'triangle');}return;}
+  if(sleepT<1.5)return;
+  waking=.001;$('hint').style.opacity=0;sChime();showBanner('おはよう','よく眠れたね。また旅に出よう',false,2200);
+  setTimeout(()=>{resetTrip();showStart();},2300);}
+$('sleep').onclick=e=>{e.stopPropagation();startSleep();};
+
 /* ---------- つづきから／はじめから ---------- */
 function showStart(){
   if(!trips&&!diaryRead&&!petJoined&&!Object.keys(traces).length&&!specs.size)return;
