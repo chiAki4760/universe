@@ -320,9 +320,9 @@ function breakMeteor(m){
   broken++;totalBroken++;progress=Math.min(1,broken/leg.need+legBonus);
   floats.push({x:m.x,y:m.y-m.r,txt:m.ice?'パリン！':'カキン！',sub:'+'+fmtKm(leg.km/leg.need),life:1});
   sBreak(m.ice);
-  if(L===1&&!radioStarted.go&&progress>=.45&&progress<1){radioStarted.go=true;startRadio('go');}
-  else if(L===1&&!ev&&!ship&&!radioStarted.sail&&progress>=.08&&progress<.4){radioStarted.sail=true;startSail();}
-  else if(!ev&&!ship&&progress<1&&((L===0&&!atkLog.sun&&!radioStarted.atk0&&progress>=.3)||(L===2&&!radioStarted.atk2&&progress>=.15))){radioStarted['atk'+L]=true;startAtk(L===0?'sun':'jupiter');}
+  if(L===1&&tripEv.radioGo&&!radioStarted.go&&progress>=.45&&progress<1){radioStarted.go=true;startRadio('go');}
+  else if(L===1&&tripEv.sail&&!ev&&!ship&&!radioStarted.sail&&progress>=.08&&progress<.4){radioStarted.sail=true;startSail();}
+  else if(!ev&&!ship&&progress<1&&((L===0&&tripEv.atkSun&&!radioStarted.atk0&&progress>=.3)||(L===2&&tripEv.atkJup&&!radioStarted.atk2&&progress>=.15))){radioStarted['atk'+L]=true;startAtk(L===0?'sun':'jupiter');}
   if(diaryRead&&!petJoined&&!ship&&!petCalled&&L===0&&progress>=.5&&progress<1){petCalled=true;showShip(3);}
   if(!diaryRead&&!ship&&progress<1){
     if(L===0&&shipN<1&&progress>=.55)showShip(1);
@@ -377,8 +377,8 @@ function land(){
   if(cur!=='jupiter'){foot.push({x:player.x-6,s:1,t:T},{x:player.x+7,s:-1,t:T});if(foot.length>240)foot.splice(0,foot.length-240);}
   kick(player.x,1);if(cur!=='jupiter'){sLand(cur);floats.push({x:player.x,y:surfY(player.x)-30,txt:STAGES[cur].word,life:1.2});}
   updateHud();
-  if(!ev&&player.steps>=4&&!hellLog[cur])startHell();
-  else if(!ev&&!comm&&!book&&hellLog[cur])maybeInv();}
+  if(!ev&&player.steps>=4&&!hellLog[cur]&&tripEv.hell[cur])startHell();
+  else if(!ev&&!comm&&!book&&(hellLog[cur]||!tripEv.hell[cur]))maybeInv();}
 function kick(x,k){
   if(cur==='jupiter'){for(let i=0;i<Math.round(8*k);i++)parts.push({kind:'puff',x:x+rnd(-20,20),h:rnd(0,10),vx:rnd(-30,30),vy:rnd(5,30),life:1,r:rnd(6,14)});return;}
   const n=Math.round((cur==='europa'?16:22)*k);
@@ -445,7 +445,16 @@ addEventListener('pointerup',()=>{invPress=false;sailHold=0;});addEventListener(
 $('grav').onclick=e=>{e.stopPropagation();gMode=gMode==='star'?'earth':'star';setGravLabel();};
 $('next').onclick=e=>{e.stopPropagation();if(player.air||ev)return;
   if(L<LEGS.length-1)startLeg(L+1);else startHome();};
-function resetTrip(){log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};invLog={};invWins=0;invTries=0;atkLog={};glitch=0;sailLog=null;sunSeen={};bhDone=false;bhLog=null;bugLog={hit:0,dodge:0};pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
+/* 2回目からの旅は、いくつかのイベントが出たり出なかったりする（物語に必要なものは毎回出る） */
+let tripEv=null;
+function rollTrip(){const first=trips===0,r=p=>first||Math.random()<p;
+  tripEv={hell:{moon:r(.65),europa:r(.65),jupiter:r(.65)},inv:{moon:r(.6),europa:r(.6),jupiter:r(.6)},
+    atkSun:r(.5),atkJup:r(.5),sail:r(.65),bh:r(.55),radioGo:r(.75)};
+  // 静かすぎる旅にならないよう、少なくとも5つは出す
+  const keys=[];['hell','inv'].forEach(g=>Object.keys(tripEv[g]).forEach(k=>keys.push([g,k])));['atkSun','atkJup','sail','bh','radioGo'].forEach(k=>keys.push([k]));
+  const on=([g,k])=>k?tripEv[g][k]:tripEv[g],set=([g,k])=>{if(k)tripEv[g][k]=true;else tripEv[g]=true;};
+  let off=keys.filter(x=>!on(x));while(keys.length-off.length<5&&off.length){const i=Math.floor(Math.random()*off.length);set(off[i]);off.splice(i,1);}}
+function resetTrip(){rollTrip();log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};invLog={};invWins=0;invTries=0;atkLog={};glitch=0;sailLog=null;sunSeen={};bhDone=false;bhLog=null;bugLog={hit:0,dodge:0};pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
 $('restart').onclick=e=>{e.stopPropagation();resetTrip();};
 
 /* ---------- 帰り道 ---------- */
@@ -511,7 +520,7 @@ function frameFly(dt,landing){
 
 function frameHome(dt){
   if(!ev&&!ship&&!book&&bhHold<=0)homeT+=dt;
-  if(!bhDone&&homeT>.6&&!ev&&!ship&&phase==='home')startBH();
+  if(tripEv.bh&&!bhDone&&homeT>.6&&!ev&&!ship&&phase==='home')startBH();
   if(!diaryRead&&shipN>=2&&!shipHomeTried&&homeT>.7){shipHomeTried=true;showShip(3);}
   if(homeT>=1.6&&!ship&&!radioStarted.home){radioStarted.home=true;startRadio('home');}
   const p=ease(Math.min(1,homeT/4)),base=Math.min(W,H);
@@ -1480,7 +1489,7 @@ function sMarch(i){if(!sound)return;const f=[98,87,78,73][i%4],t=ac().currentTim
 function sPew(){if(!sound)return;tone(ac().currentTime,1500,600,.09,.03,'square');}
 function sPop(){if(!sound)return;const t=ac().currentTime;grain(t,2400,.8,.12,.25);tone(t,700,200,.12,.04,'triangle');}
 function sUfo(){if(!sound)return;const t=ac().currentTime;for(let i=0;i<4;i++)tone(t+i*.12,880,1320,.1,.025);}
-function maybeInv(){const k=invLog[cur]||0;if(k<3&&player.steps>=INV_STEPS[k])startInv(k);}
+function maybeInv(){if(!tripEv.inv[cur])return;const k=invLog[cur]||0;if(k<3&&player.steps>=INV_STEPS[k])startInv(k);}
 function invGeo(){const gy=groundY();return {gy,by:gy+(H-gy)*.1,ry:gy+(H-gy)*.62};}
 function startInv(tier){invLog[cur]=tier+1;invTries++;
   const cols=W<520?6:8,rows=INV_ROWS[tier],dx=Math.min(46,W*.74/cols),dy=Math.min(34,Math.max(26,H*.042)),{by,ry}=invGeo();
@@ -1720,7 +1729,7 @@ function showStart(){
   if(petJoined)row('相棒','モフ');
   if(partyEver)row('おちゃかい','みんなでお茶を飲んだ');
   if(specs.size)row('標本箱',`${specs.size} / ${SPEC_IDS.length}`);
-  $('startmsg').textContent=partyEver?'お茶会のあとの旅です。また会いに行こう':'前の旅の記録が残っています';
+  $('startmsg').textContent=partyEver?'お茶会のあとの旅です。また会いに行こう':'前の旅の記録が残っています。旅のようすは、毎回すこし変わります';
   $('freshwarn').hidden=true;$('fresh').textContent='はじめから';$('start').hidden=false;}
 $('start').addEventListener('pointerdown',e=>e.stopPropagation());
 $('box1').onclick=e=>{e.stopPropagation();$('start').hidden=true;openBox(()=>{$('start').hidden=false;});};
@@ -1731,7 +1740,7 @@ $('fresh').onclick=e=>{e.stopPropagation();
   if($('freshwarn').hidden){$('freshwarn').hidden=false;$('fresh').textContent='消して、はじめから';return;}
   ['hoshikuzu-trips','hoshikuzu-diary','hoshikuzu-pet','hoshikuzu-letters','hoshikuzu-party','hoshikuzu-specimens'].forEach(k=>{try{localStorage.removeItem(k);}catch(err){}});
   trips=0;diaryRead=false;petJoined=false;partyEver=false;specs=new Set();$('start').hidden=true;resetTrip();};
-window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,300));if(window.visualViewport)visualViewport.addEventListener('resize',resize);resize();startLeg(0);showStart();requestAnimationFrame(loop);
+window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,300));if(window.visualViewport)visualViewport.addEventListener('resize',resize);resize();rollTrip();startLeg(0);showStart();requestAnimationFrame(loop);
 })();
 </script>
 </body>
