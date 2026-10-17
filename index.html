@@ -309,10 +309,11 @@ function breakMeteor(m){
   for(let i=0;i<8;i++){const a=i/8*6.283+rnd(-.2,.2),sp=rnd(60,190);
     shards.push({x:m.x,y:m.y,vx:Math.cos(a)*sp+m.vx,vy:Math.sin(a)*sp+m.vy,r:m.r*rnd(.18,.34),rot:rnd(0,6),vr:rnd(-6,6),life:1,hue:m.hue,ice:m.ice,dust:false});}
   for(let i=0;i<16;i++){const a=rnd(0,6.283),sp=rnd(20,120);shards.push({x:m.x,y:m.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,r:rnd(1,2.6),life:1,dust:true,col:m.ice?'200,235,255':'255,220,160'});}
-  broken++;totalBroken++;progress=Math.min(1,broken/leg.need);
+  broken++;totalBroken++;progress=Math.min(1,broken/leg.need+legBonus);
   floats.push({x:m.x,y:m.y-m.r,txt:m.ice?'パリン！':'カキン！',sub:'+'+fmtKm(leg.km/leg.need),life:1});
   sBreak(m.ice);
   if(L===1&&!radioStarted.go&&progress>=.45&&progress<1){radioStarted.go=true;startRadio('go');}
+  else if(L===1&&!ev&&!ship&&!radioStarted.sail&&progress>=.08&&progress<.4){radioStarted.sail=true;startSail();}
   else if(!ev&&!ship&&progress<1&&((L===0&&!atkLog.sun&&!radioStarted.atk0&&progress>=.3)||(L===2&&!radioStarted.atk2&&progress>=.15))){radioStarted['atk'+L]=true;startAtk(L===0?'sun':'jupiter');}
   if(diaryRead&&!petJoined&&!ship&&!petCalled&&L===0&&progress>=.5&&progress<1){petCalled=true;showShip(3);}
   if(!diaryRead&&!ship&&progress<1){
@@ -320,7 +321,7 @@ function breakMeteor(m){
     else if(L===1&&shipN<2&&progress>=.2)showShip(2);
     else if(L===2&&shipN>=2&&!radioStarted['ship'+L]&&progress>=.4){radioStarted['ship'+L]=true;showShip(3);}}
   if(progress>=1)startLanding();}
-function startLeg(i){L=i;phase='fly';ship=null;broken=0;progress=0;progressShown=0;meteors=[];shards=[];floats=[];spawnT=0;
+function startLeg(i){L=i;phase='fly';legBonus=0;ship=null;broken=0;progress=0;progressShown=0;meteors=[];shards=[];floats=[];spawnT=0;
   $('walkbar').hidden=true;$('card').hidden=true;
   $('hint').textContent=LEGS[i].ice?'氷のかけらや隕石をタップしてくだき、先へ進もう':'隕石をタップしてくだき、月へ進もう';$('hint').style.opacity=1;updateHud();}
 
@@ -400,6 +401,7 @@ function updateHud(){
   if(ev&&ev.type==='bh'){bhHud();return;}
   if(ev&&ev.type==='inv'){const e=ev,n=e.a.filter(v=>v.alive).length;$('lab').textContent=INV_TITLE[e.tier];$('big').textContent=n?`のこり ${n}`:'全滅！';
     $('sub').textContent=`シールド ${'●'.repeat(Math.max(0,e.lives))}${'○'.repeat(3-Math.max(0,e.lives))}　スコア ${e.score}`;return;}
+  if(ev&&ev.type==='sail'){sailHud();return;}
   if(ev&&ev.type==='atk'){const e=ev;$('lab').textContent='謎の電波攻撃';$('big').textContent=e.stage==='attack'?`のこり ${Math.max(0,Math.ceil(ATK_DUR-e.t))} 秒`:e.stage==='warn'?'警告':'受信完了';
     $('sub').textContent=`打ち消したノイズ ${e.got}こ`;if(glitch>.05){$('lab').textContent=garble('謎の電波攻撃');$('big').textContent=garble('のこり ?? 秒');}return;}
   if(phase==='party'){$('lab').textContent='メアリー・セレスト号';$('big').textContent='おちゃかい';$('sub').textContent=`お客さん ${partyCount()}人`;return;}
@@ -423,18 +425,19 @@ cv.addEventListener('pointerdown',e=>{
     if(shipTap(px,py))return;
     if(ev&&ev.type==='radio'&&radioTap(px,py))return;
     if(ev&&ev.type==='atk'&&atkTap(px,py))return;
+    if(ev&&ev.type==='sail'){sailHold=px<W/2?1:-1;return;}
     for(let i=meteors.length-1;i>=0;i--){const m=meteors[i];if(Math.hypot(m.x-px,m.y-py)<m.r+16){meteors.splice(i,1);breakMeteor(m);return;}}
   }else if(phase==='home'){if(ev&&ev.type==='bh'){bhTap(px,py);return;}if(flyPetTap(px,py))return;if(shipTap(px,py))return;if(ev&&ev.type==='radio')radioTap(px,py);}
   else if(phase==='ship'){shipRoomTap(px,py);}
   else if(phase==='party'){partyTap(px,py);}
-  else if(phase==='walk'){if(ev&&ev.type==='inv'){invPress=true;invPoint(px);return;}if(ev&&ev.type==='scope'){scopeTap(px,py);return;}if(ev&&ev.type==='hell'&&hellTap(px,py))return;if(traceTap(px,py))return;if(sandTap(px,py))return;if(standTap(px,py))return;if(petTap(px,py))return;if(commTap(px,py))return;hop();}
+  else if(phase==='walk'){if(ev&&ev.type==='inv'){invPress=true;invPoint(px);return;}if(ev&&ev.type==='scope'){scopeTap(px,py);return;}if(ev&&ev.type==='hell'&&hellTap(px,py))return;if(traceTap(px,py))return;if(sandTap(px,py))return;if(standTap(px,py))return;if(petTap(px,py))return;if(sunTap(px,py))return;if(commTap(px,py))return;hop();}
 });
 cv.addEventListener('pointermove',e=>{if(!ev||ev.type!=='inv'||!(invPress||e.pointerType==='mouse'&&e.buttons))return;const r=cv.getBoundingClientRect();invPoint(e.clientX-r.left);});
-addEventListener('pointerup',()=>{invPress=false;});addEventListener('pointercancel',()=>{invPress=false;});
+addEventListener('pointerup',()=>{invPress=false;sailHold=0;});addEventListener('pointercancel',()=>{invPress=false;sailHold=0;});
 $('grav').onclick=e=>{e.stopPropagation();gMode=gMode==='star'?'earth':'star';setGravLabel();};
 $('next').onclick=e=>{e.stopPropagation();if(player.air||ev)return;
   if(L<LEGS.length-1)startLeg(L+1);else startHome();};
-function resetTrip(){log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};invLog={};invWins=0;invTries=0;atkLog={};glitch=0;bhDone=false;bhLog=null;pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
+function resetTrip(){log={};totalBroken=0;cur='moon';ev=null;radioLog={};radioStarted={};hellLog={};extraCraters=[];ship=null;shipN=0;shipHomeTried=false;traces=loadLetters();scopeLog={};invLog={};invWins=0;invTries=0;atkLog={};glitch=0;sailLog=null;sunSeen={};bhDone=false;bhLog=null;pet=null;petCalled=false;partyDone=false;mapShown=false;startLeg(0);}
 $('restart').onclick=e=>{e.stopPropagation();resetTrip();};
 
 /* ---------- 帰り道 ---------- */
@@ -454,6 +457,7 @@ function showCard(){phase='end';trips++;try{localStorage.setItem('hoshikuzu-trip
   if(partyDone)row('おちゃかい','日記の人と、みんなでお茶を飲んだ');
   if(invTries)row('星くずの隊列',`${invWins} / ${invTries} くずした`);
   {const a=Object.values(atkLog);if(a.length)row('謎の電波攻撃',`打ち消したノイズ ${a.reduce((s,x)=>s+x.got,0)}こ`);}
+  if(sailLog)row('光の帆',`${fmtKm(sailLog.gain*LEGS[1].km)} 進んだ（いちばんよい角度の ${Math.round(sailLog.best*100)}%）`);
   if(specs.size)row('標本箱',`${specs.size} / ${SPEC_IDS.length}`);
   if('go' in radioLog||'home' in radioLog)row('未知の電波',`光る生き物から星くず ${(radioLog.go||0)+(radioLog.home||0)}こ`);
   $('trips').textContent=partyDone?`メアリー・セレスト号も、いっしょに帰ってきました（${trips}回目の旅）`
@@ -491,7 +495,7 @@ function frameFly(dt,landing){
     if(s.dust){cx.fillStyle=`rgb(${s.col})`;cx.beginPath();cx.arc(s.x,s.y,s.r,0,7);cx.fill();}
     else{s.rot+=s.vr*dt;cx.save();cx.translate(s.x,s.y);cx.rotate(s.rot);cx.fillStyle=s.ice?'rgba(200,232,255,.9)':`hsl(${s.hue},20%,45%)`;cx.beginPath();cx.moveTo(-s.r,-s.r*.6);cx.lineTo(s.r,-s.r*.2);cx.lineTo(s.r*.3,s.r);cx.closePath();cx.fill();cx.restore();}
     cx.globalAlpha=1;}
-  radioFrame(dt);atkFrame(dt);drawFlyPet();
+  radioFrame(dt);atkFrame(dt);sailFrame(dt);if(!(ev&&ev.type==='sail'))drawFlyPet();
   drawFloats(dt);
   if(landing){landT+=dt;const f=Math.max(0,(landT-1.6)/.8);if(f>0){cx.fillStyle=`rgba(5,6,15,${Math.min(1,f)})`;cx.fillRect(0,0,W,H);}if(landT>2.5)startWalk();}
   updateHud();}
@@ -511,15 +515,15 @@ function frameHome(dt){
   if(phase==='home'&&homeT>4.3&&!ev&&!ship&&(partyDone||!allLetters()))showCard();}
 
 /* 空 */
-function skyMoon(){cx.fillStyle='#04050c';cx.fillRect(0,0,W,H);drawStars(0,0,camX);drawEarth(W*.8,H*.17,Math.min(W,H)*.065);}
+function skyMoon(){cx.fillStyle='#04050c';cx.fillRect(0,0,W,H);drawStars(0,0,camX);drawSkySun();drawEarth(W*.8,H*.17,Math.min(W,H)*.065);}
 function skyEuropa(){cx.fillStyle='#03040a';cx.fillRect(0,0,W,H);drawStars(0,0,camX);
   const r=Math.min(W,H)*.34;drawJupiter(W*.82-camX*.01,H*.2,r,.75);
-  smallBall(W*.16,H*.13,Math.min(W,H)*.02,'#fff3a0','#c79a2a');drawTinyEarth();}
+  drawSkySun();smallBall(W*.16,H*.13,Math.min(W,H)*.02,'#fff3a0','#c79a2a');drawTinyEarth();}
 function skyJupiter(){
   const g=cx.createLinearGradient(0,0,0,groundY());g.addColorStop(0,'#120a14');g.addColorStop(.55,'#4a2a2a');g.addColorStop(1,'#c58d5c');cx.fillStyle=g;cx.fillRect(0,0,W,H);
   drawStars(0,0,camX,.35);
   smallBall(W*.78,H*.12,Math.min(W,H)*.03,'#fbf7ee','#9c907d');
-  smallBall(W*.22,H*.2,Math.min(W,H)*.022,'#fff3a0','#c79a2a');drawTinyEarth();}
+  drawSkySun();smallBall(W*.22,H*.2,Math.min(W,H)*.022,'#fff3a0','#c79a2a');drawTinyEarth();}
 /* 遠くの景色 */
 function hills(cols,amp,par){const gy=groundY();cols.forEach((c,i)=>{cx.fillStyle=c;cx.beginPath();cx.moveTo(0,gy+2);
   for(let x=0;x<=W+10;x+=10){const wx=x+camX*par[i];cx.lineTo(x,gy-amp[i][0]-Math.sin(wx*.006+i)*amp[i][1]-Math.sin(wx*.017+i*2)*amp[i][2]);}cx.lineTo(W,gy+2);cx.closePath();cx.fill();});}
@@ -1543,6 +1547,82 @@ function drawInv(e,by,ry,cfg){
   for(const f of e.fx){cx.globalAlpha=Math.max(0,Math.min(1,f.life*1.5));cx.fillStyle=f.col;cx.fillRect(f.x-1.5,f.y-1.5,3,3);}cx.globalAlpha=1;
   if(e.stage!=='lose'||e.lives>0)drawRover(e.rx,ry,e.hitT>0);
   else{cx.save();cx.globalAlpha=.6;drawRover(e.rx,ry,false);cx.restore();}}
+
+/* ---------- イベント：光の帆（ソーラーセイル） ---------- */
+const SAIL_DUR=22,AU_KM=1.496e8,BEST=Math.atan(1/Math.SQRT2); // いちばん効率のよい角度 約35.3度
+let sailLog=null,sailHold=0,legBonus=0;
+const sunR=()=>1+4.2*progress;                       // 太陽からのきょり（天文単位）：月のそば1 → エウロパ5.2
+const sunPct=r=>100/(r*r);                            // 光の強さ（地球のそば=100%）
+const sunTemp=r=>Math.round(394/Math.sqrt(r)-273);    // 空気のない宇宙で、太陽に向いた面の温度のめやす
+function sHum(){if(!sound)return;const t=ac().currentTime;tone(t,220,224,1.6,.05);tone(t,330,333,1.6,.03);tone(t+.2,440,446,1.4,.02);}
+function startSail(){meteors=[];legBonus=legBonus||0;
+  ev={type:'sail',t:0,stage:'open',phi:0,v:0,gain:0,best:0,ph:[],spawn:0,tips:{},open:0};
+  showBanner('光の帆をひろげよう','左右を長押しで、帆がまわる',false,3000);
+  $('hint').textContent='宇宙では、光にも物を押す力がある。帆をななめにして、上（太陽をまわる向き）へ進もう。光の強さは地球のそばを100%として表示';$('hint').style.opacity=1;sHum();updateHud();}
+function sailEff(phi){return Math.max(-1,Math.cos(phi)**2*Math.sin(phi)/(Math.cos(BEST)**2*Math.sin(BEST)));}
+function sailFrame(dt){if(!ev||ev.type!=='sail')return;const e=ev,r=sunR(),P=1/(r*r),base=Math.min(W,H);e.t+=dt;
+  if(e.stage==='open'){e.open=Math.min(1,e.open+dt*.7);if(e.open>=1){e.stage='sail';e.t=0;}}
+  if(e.stage==='sail'){
+    e.phi=Math.max(-1.35,Math.min(1.35,e.phi+sailHold*.9*dt));
+    const eff=sailEff(e.phi);e.v=Math.max(0,e.v+.0055*P*eff*dt);
+    const add=Math.min(e.v*dt,.86-progress);if(add>0){progress+=add;legBonus+=add;e.gain+=add;}
+    if(eff>e.best)e.best=eff;
+    if(eff>.97&&!e.tips.good){e.tips.good=1;floats.push({x:W*.5,y:H*.3,txt:'いい角度！',sub:`帆の角度 約${Math.round(e.phi*180/Math.PI)}度`,life:1.4});if(sound)sPing();}
+    if(r>1.52&&!e.tips.mars){e.tips.mars=1;$('hint').textContent=`火星のきょりを通過。光の強さは地球のそばの約${Math.round(sunPct(1.52))}%、帆を押す力も弱くなる`;}
+    if(r>2.7&&!e.tips.belt){e.tips.belt=1;$('hint').textContent='小惑星帯のあたり。太陽の見かけの大きさは、地球で見るときの約1/3';}
+    if(e.t>SAIL_DUR){e.stage='fold';e.t=0;sailLog={gain:e.gain,best:e.best};
+      showBanner('光の帆をたたんだ',`光の力だけで ${fmtKm(e.gain*LEGS[L].km)} 進んだ`,false,3400);sChime();
+      $('hint').textContent='日本の探査機イカロスは2010年、この方法で宇宙を進んだ世界で最初の宇宙船になった';}
+    updateHud();}
+  if(e.stage==='fold'){e.open=Math.max(0,e.open-dt*.6);if(e.t>3.6){ev=null;sailHold=0;$('hint').textContent='星についたら、空の太陽にふれてみよう';
+    setTimeout(()=>{if(phase==='fly'&&!ev)$('hint').textContent=flyHint();},4000);updateHud();return;}}
+  // 太陽と光
+  cx.fillStyle='#04050c';cx.fillRect(0,0,W,H);drawStars(dt,25+e.v*9000);
+  const sr=base*.34/r,sx=-sr*.25,sy=H*.46;
+  const gl=cx.createRadialGradient(sx,sy,sr*.2,sx,sy,sr*3.2);gl.addColorStop(0,`rgba(255,240,200,${.55*Math.min(1,P*1.6)})`);gl.addColorStop(1,'rgba(255,200,120,0)');cx.fillStyle=gl;cx.fillRect(0,0,W,H);
+  cx.save();cx.shadowColor='rgba(255,220,140,1)';cx.shadowBlur=40;smallBall(sx,sy,sr,'#fffbe6','#ffb347');cx.restore();
+  const c={x:W*.58,y:H*.48},L2=base*.22*e.open,n={x:Math.cos(e.phi),y:-Math.sin(e.phi)},tv={x:Math.sin(e.phi),y:Math.cos(e.phi)};
+  e.spawn-=dt;if(e.spawn<=0&&e.stage!=='fold'){e.spawn=.04/Math.max(.08,P);e.ph.push({x:sx+sr,y:rnd(H*.12,H*.82),vx:520,vy:0,b:false});}
+  cx.lineWidth=1.6;
+  for(let i=e.ph.length-1;i>=0;i--){const q=e.ph[i],px0=q.x,py0=q.y;q.x+=q.vx*dt;q.y+=q.vy*dt;
+    if(!q.b&&L2>0){const d0=(px0-c.x)*n.x+(py0-c.y)*n.y,d1=(q.x-c.x)*n.x+(q.y-c.y)*n.y,along=(q.x-c.x)*tv.x+(q.y-c.y)*tv.y;
+      if(d0<0&&d1>=0&&Math.abs(along)<L2){const vn=q.vx*n.x+q.vy*n.y;q.vx-=2*vn*n.x;q.vy-=2*vn*n.y;q.x=px0;q.y=py0;q.b=true;}}
+    if(q.x<-20||q.x>W+20||q.y<-20||q.y>H+20){e.ph.splice(i,1);continue;}
+    cx.strokeStyle=q.b?`rgba(255,250,220,${.35+.4*P})`:`rgba(255,230,160,${.25+.5*P})`;cx.beginPath();cx.moveTo(q.x,q.y);cx.lineTo(q.x-q.vx*.05,q.y-q.vy*.05);cx.stroke();}
+  // 帆と船
+  if(L2>0){cx.save();cx.lineCap='round';
+    cx.strokeStyle='rgba(200,210,235,.6)';cx.lineWidth=1;cx.beginPath();cx.moveTo(c.x,c.y);cx.lineTo(c.x+tv.x*L2,c.y+tv.y*L2);cx.moveTo(c.x,c.y);cx.lineTo(c.x-tv.x*L2,c.y-tv.y*L2);cx.stroke();
+    const g=cx.createLinearGradient(c.x-tv.x*L2,c.y-tv.y*L2,c.x+tv.x*L2,c.y+tv.y*L2);g.addColorStop(0,'#9fb6d8');g.addColorStop(.5,`rgba(255,255,255,${.7+.3*P})`);g.addColorStop(1,'#9fb6d8');
+    cx.strokeStyle=g;cx.lineWidth=5;cx.shadowColor='rgba(220,235,255,.9)';cx.shadowBlur=12;cx.beginPath();cx.moveTo(c.x-tv.x*L2,c.y-tv.y*L2);cx.lineTo(c.x+tv.x*L2,c.y+tv.y*L2);cx.stroke();cx.restore();}
+  cx.fillStyle='#dfe3ee';cx.beginPath();cx.arc(c.x+n.x*10,c.y+n.y*10,8,0,7);cx.fill();cx.fillStyle='#4a6fb0';cx.beginPath();cx.arc(c.x+n.x*10,c.y+n.y*10,3.5,0,7);cx.fill();
+  if(e.stage==='sail'){const eff=sailEff(e.phi),F=Math.max(0,Math.cos(e.phi)**2)*P,len=20+70*Math.min(1,F*2.2);
+    cx.strokeStyle='rgba(140,255,220,.85)';cx.fillStyle='rgba(140,255,220,.85)';cx.lineWidth=3;const ax=c.x+n.x*22,ay=c.y+n.y*22,bx=ax+n.x*len,by=ay+n.y*len;
+    cx.beginPath();cx.moveTo(ax,ay);cx.lineTo(bx,by);cx.stroke();cx.beginPath();cx.moveTo(bx+n.x*8,by+n.y*8);cx.lineTo(bx-n.y*6,by+n.x*6);cx.lineTo(bx+n.y*6,by-n.x*6);cx.fill();
+    // 効率メーター
+    const mw=Math.min(240,W*.6),mx=(W-mw)/2,my=H*.86;cx.fillStyle='rgba(20,24,52,.7)';cx.beginPath();cx.roundRect(mx-12,my-30,mw+24,48,12);cx.fill();
+    cx.font=`700 12px ${FONT}`;cx.textAlign='center';cx.fillStyle='#d8dcff';
+    cx.fillText(`帆の角度 ${Math.round(e.phi*180/Math.PI)}度　上へ進む力 ${Math.max(0,Math.round(eff*100))}%`,W/2,my-12);
+    cx.fillStyle='rgba(255,255,255,.12)';cx.beginPath();cx.roundRect(mx,my-2,mw,8,4);cx.fill();
+    cx.fillStyle=eff>.95?'#9dffd9':eff>0?'#ffd27a':'#ff8a7a';cx.beginPath();cx.roundRect(mx,my-2,mw*Math.max(.02,Math.min(1,Math.abs(eff))),8,4);cx.fill();
+    cx.font=`900 22px ${FONT}`;cx.fillStyle=`rgba(255,255,255,${sailHold<0?.9:.35})`;cx.fillText('↺',24,my+4);cx.fillStyle=`rgba(255,255,255,${sailHold>0?.9:.35})`;cx.fillText('↻',W-24,my+4);}
+  drawFloats(dt);}
+function sailHud(){const r=sunR();$('lab').textContent='光の帆（ソーラーセイル）';$('big').textContent=`太陽から ${(r*AU_KM/1e8).toFixed(2)}億 km`;
+  $('sub').textContent=`光の強さ ${Math.round(sunPct(r))}%・日なた 約${sunTemp(r)}℃`;}
+
+/* ---------- 星から見た太陽 ---------- */
+const SUNINFO={
+  moon:{pct:'地球とほぼ同じ（100%）',size:'地球で見るのと同じ大きさ',time:'約8分20秒',temp:'空気がないので、昼は約110℃、夜は約−170℃'},
+  europa:{pct:'地球の約1/27（3.7%）',size:'地球で見る大きさの約1/5',time:'約43分',temp:'昼でも約−160℃'},
+  jupiter:{pct:'地球の約1/27（3.7%）',size:'地球で見る大きさの約1/5',time:'約43分',temp:'雲のてっぺんは約−145℃'}};
+const SUNPOS={moon:()=>({x:W*.14,y:H*.1,r:Math.min(W,H)*.03}),europa:()=>({x:W*.16,y:H*.13,r:Math.min(W,H)*.02}),jupiter:()=>({x:W*.22,y:H*.2,r:Math.min(W,H)*.022})};
+let sunSeen={};
+function drawSkySun(){const p=SUNPOS[cur](),g=cx.createRadialGradient(p.x,p.y,p.r*.5,p.x,p.y,p.r*(cur==='moon'?7:5));
+  g.addColorStop(0,`rgba(255,240,200,${cur==='moon'?.55:.3})`);g.addColorStop(1,'rgba(255,220,150,0)');cx.fillStyle=g;cx.fillRect(p.x-p.r*8,p.y-p.r*8,p.r*16,p.r*16);
+  if(cur==='moon')smallBall(p.x,p.y,p.r,'#fffdf2','#ffd27a');
+  if(!sunSeen[cur]){const a=.35+.35*Math.sin(T*3);cx.strokeStyle=`rgba(255,230,160,${a})`;cx.lineWidth=1.5;cx.beginPath();cx.arc(p.x,p.y,p.r+9+4*Math.sin(T*3),0,7);cx.stroke();}}
+function sunTap(px,py){if(ev||comm)return false;const p=SUNPOS[cur]();if(Math.hypot(px-p.x,py-p.y)>Math.max(30,p.r*2.5))return false;
+  const s=SUNINFO[cur];sunSeen[cur]=true;if(sound)sPowan();
+  openBook([[`${STAGES[cur].name}から見た太陽`,`光の強さ：${s.pct}\n大きさ：${s.size}\n\nいま見えている太陽は、${s.time}前に太陽を出た光。\n\n${s.temp}`]],'太陽',null,'letter');return true;}
 
 /* ---------- イベント：謎の電波攻撃 ---------- */
 let glitch=0,atkLog={};
