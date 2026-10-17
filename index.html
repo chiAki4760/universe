@@ -39,6 +39,10 @@ button:focus-visible{outline:2px solid var(--gold);outline-offset:2px;}
 button.on{border-color:var(--gold);color:var(--gold);}
 button.go{border-color:rgba(255,210,122,.6);}
 .bottombar button{pointer-events:auto;}
+/* 横向き（高さが低い画面）では、ボタンを空の右上へ。地面を広くタップできるように */
+@media (orientation:landscape) and (max-height:520px){
+  .bottombar{top:calc(54px + env(safe-area-inset-top,0px));bottom:auto;padding-bottom:0;justify-content:flex-end;align-items:flex-start;}
+}
 .hint{position:fixed;left:0;right:0;bottom:0;text-align:center;
   padding-bottom:calc(16px + env(safe-area-inset-bottom,0px));
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
